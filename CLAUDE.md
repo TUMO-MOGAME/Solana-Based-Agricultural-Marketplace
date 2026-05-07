@@ -246,9 +246,9 @@ We hold these licences ourselves OR partner with someone who does. No shortcuts.
 - [x] **Step 2: credit-score logic ported.** `CreditEvent` enum + `FarmerAccount::apply_event` mirror `core/credit-score.ts`. All 11 TS test cases mirrored as Rust `#[test]`s and passing. Counter updates moved to settlement (TS semantics). Insurance-first rule: drought year never damages score.
 - [x] **Step 3: grow-pack pricing logic ported.** `GrowPackPricing` + `GrowPackQuote` + `GrowPack::quote()` mirror `core/grow-pack.ts`. 9 of the 11 TS test cases mirrored.
 - [x] **Step 4: parametric trigger logic ported.** `ParametricPolicy` + `PayoutTier` + `PayoutResult` + `ParametricPolicy::evaluate_payout` mirror `core/parametric.ts`. All 10 happy-path tier tests + 2 validation tests mirrored as Rust `#[test]`s. **`trigger_insurance_payout` now computes payout amount on-chain from rainfall** — caller can't inflate.
-- [x] **Step 5: harvest-settlement logic ported.** `RepaymentResult` + `GrowPack::settle_at_harvest` mirror `core/repayment.ts`. 7 happy-path tests + the 6-case invariant test all passing. Settlement handler now delegates the math. **41 Rust tests passing across 4 modules — every numeric rule in `core/` has a parallel Rust port.**
+- [x] **Step 5: harvest-settlement logic ported.** `RepaymentResult` + `GrowPack::settle_at_harvest` mirror `core/repayment.ts`. 7 happy-path tests + the 6-case invariant test all passing. Settlement handler now delegates the math.
+- [x] **Step 6: end-to-end litesvm lifecycle tests.** `tests/lifecycle.rs` loads `vuna.so` into an in-process runtime and runs three scenarios — happy path (score 600→620), drought-payout (score unchanged via insurance-first rule), default (score 600→500). All 6 instructions exercised against the real binary. **44 Rust tests + 99 TS tests = 143 passing.**
 - [ ] First insurer cold email sent — recommended first contact: LBIC
-- [ ] Step 6: end-to-end `litesvm` integration test exercising the full Grow Pack lifecycle on a simulated Solana runtime
 - [ ] Step 3: port `core/grow-pack.ts` validation + tests
 - [ ] Step 4: port `core/parametric.ts` tier evaluation into `trigger_insurance_payout` + tests
 - [ ] Step 5: tighten `settle_repayment` math + the 6-case invariant test
