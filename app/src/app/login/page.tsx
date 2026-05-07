@@ -6,7 +6,10 @@ import Link from "next/link";
 import AuthCard from "../auth-card";
 import SocialAuth from "../social-auth";
 import styles from "../auth.module.css";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import {
+  createSupabaseBrowserClient,
+  isSupabaseConfigured,
+} from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,6 +28,15 @@ export default function LoginPage() {
       return;
     }
     setBusy(true);
+
+    // Demo mode: when Supabase env vars are not set, accept anything and
+    // jump straight to the dashboard. Real auth kicks in automatically the
+    // moment NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY are populated.
+    if (!isSupabaseConfigured()) {
+      router.push("/dashboard");
+      return;
+    }
+
     const supabase = createSupabaseBrowserClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
@@ -39,15 +51,15 @@ export default function LoginPage() {
       );
       return;
     }
-    router.push("/welcome");
+    router.push("/dashboard");
     router.refresh();
   };
 
   return (
     <AuthCard
       titleWords={["Welcome", "Back"]}
-      subtitle="Social Assembly"
-      watermark="SA"
+      subtitle="Mazra'at albaan"
+      watermark="MA"
       footer={
         <>
           New here? <Link href="/signup">Create an account</Link>
@@ -69,7 +81,7 @@ export default function LoginPage() {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@socialassembly.co"
+              placeholder="you@example.com"
               className={styles.input}
               required
             />

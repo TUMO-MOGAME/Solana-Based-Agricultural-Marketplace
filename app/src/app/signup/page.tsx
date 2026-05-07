@@ -5,9 +5,14 @@ import Link from "next/link";
 import AuthCard from "../auth-card";
 import SocialAuth from "../social-auth";
 import styles from "../auth.module.css";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
+import {
+  createSupabaseBrowserClient,
+  isSupabaseConfigured,
+} from "@/lib/supabase/client";
 
 export default function SignupPage() {
+  const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -33,6 +38,15 @@ export default function SignupPage() {
       return;
     }
     setBusy(true);
+
+    // Demo mode: when Supabase env vars are not set, accept and go to the
+    // dashboard. Real signup with email confirmation kicks in automatically
+    // once NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY are populated.
+    if (!isSupabaseConfigured()) {
+      router.push("/dashboard");
+      return;
+    }
+
     const supabase = createSupabaseBrowserClient();
     const { error: signUpError } = await supabase.auth.signUp({
       email,
@@ -55,8 +69,8 @@ export default function SignupPage() {
     return (
       <AuthCard
         titleWords={["Check", "Email"]}
-        subtitle="Social Assembly"
-        watermark="SA"
+        subtitle="Mazra'at albaan"
+        watermark="MA"
         footer={
           <>
             Wrong address? <Link href="/signup">Try again</Link>
@@ -79,8 +93,8 @@ export default function SignupPage() {
   return (
     <AuthCard
       titleWords={["Create", "Account"]}
-      subtitle="Social Assembly"
-      watermark="SA"
+      subtitle="Mazra'at albaan"
+      watermark="MA"
       footer={
         <>
           Already a member? <Link href="/login">Sign in</Link>

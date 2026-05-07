@@ -37,8 +37,8 @@ export default function ForgotPasswordPage() {
     return (
       <AuthCard
         titleWords={["Check", "Email"]}
-        subtitle="Social Assembly"
-        watermark="SA"
+        subtitle="Mazra'at albaan"
+        watermark="MA"
         footer={
           <>
             Remembered it? <Link href="/login">Back to sign in</Link>
@@ -59,8 +59,8 @@ export default function ForgotPasswordPage() {
   return (
     <AuthCard
       titleWords={["Forgot", "Password"]}
-      subtitle="Social Assembly"
-      watermark="SA"
+      subtitle="Mazra'at albaan"
+      watermark="MA"
       footer={
         <>
           Remembered it? <Link href="/login">Back to sign in</Link>

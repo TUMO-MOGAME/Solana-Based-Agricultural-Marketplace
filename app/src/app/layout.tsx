@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Inter } from "next/font/google";
+import { VunaWalletProvider } from "@/lib/vuna/provider";
 import "./globals.css";
 
 // Satoshi is loaded locally via @font-face in globals.css (see public/fonts/).
@@ -22,11 +23,11 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "Social Assembly",
-    template: "%s · Social Assembly",
+    default: "Mazra'at albaan",
+    template: "%s · Mazra'at albaan",
   },
   description:
-    "AI-powered growth platform for South African content creators — upload a video and get second-by-second coaching on hooks, pacing, and thumbnails before you post.",
+    "Mazra'at albaan — credit, certified inputs, and parametric drought insurance for South African smallholder farmers, bundled into one Grow Pack and repaid at harvest.",
 };
 
 export const viewport: Viewport = {
@@ -47,7 +48,7 @@ export default function RootLayout({
       <body
         className={`${geistMono.variable} ${inter.variable} font-sans antialiased min-h-[100svh] w-full overflow-x-hidden`}
       >
-        {children}
+        <VunaWalletProvider>{children}</VunaWalletProvider>
       </body>
     </html>
   );

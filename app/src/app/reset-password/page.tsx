@@ -48,8 +48,8 @@ export default function ResetPasswordPage() {
   return (
     <AuthCard
       titleWords={["Reset", "Password"]}
-      subtitle="Social Assembly"
-      watermark="SA"
+      subtitle="Mazra'at albaan"
+      watermark="MA"
       footer={
         <>
           Need a new link? <Link href="/forgot-password">Start over</Link>
