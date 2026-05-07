@@ -1,0 +1,22 @@
+{
+  "name": "vuna",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Project Vuna — Solana-based agricultural marketplace for South African smallholder farmers.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.8",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "author": "Tumo Mogame & Pitsi Kgaume",
+  "license": "UNLICENSED"
+}

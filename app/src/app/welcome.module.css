@@ -1,0 +1,438 @@
+/* Welcome ticket — SOCIAL ASSEMBLY / Emma Matlhaga
+   Styling lifted from the provided reference; fonts (Cinzel + Manrope)
+   are loaded via next/font/google in page.tsx.
+   This file is a CSS Module — class names are locally scoped. */
+
+.wrapper {
+  /* Full-viewport stage */
+  position: relative;
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #d1cfc7;
+  color: #1a1a1a;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
+  overflow: hidden;
+
+  --paper-color: #fcfcfb;
+  --ink-color: #1a1a1a;
+  --accent-color: #e63946;
+}
+
+.ambientLight {
+  position: absolute;
+  width: 50vw;
+  height: 50vh;
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.4) 0%,
+    transparent 60%
+  );
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ── Top-right nav (About / Team) ───────────────────────────────────
+   Stays out of the ticket's way but always in reach. */
+.topNav {
+  position: absolute;
+  top: clamp(18px, 3vh, 32px);
+  right: clamp(18px, 4vw, 40px);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 2.5vw, 24px);
+}
+
+.topNavLink {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: #1a1a1a;
+  text-decoration: none;
+  padding: 6px 2px;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.25s ease, color 0.25s ease;
+}
+
+.topNavLink:hover {
+  border-bottom-color: #e63946;
+  color: #e63946;
+}
+
+.topNavDivider {
+  width: 1px;
+  height: 12px;
+  background: rgba(26, 26, 26, 0.25);
+}
+
+/* ═══ Ticket wrapper ═══ */
+.ticketContainer {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  gap: 0px;
+  filter: drop-shadow(0 25px 45px rgba(0, 0, 0, 0.15))
+    drop-shadow(0 4px 10px rgba(0, 0, 0, 0.05));
+  transition: gap 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.4s ease;
+  cursor: pointer;
+  /* rendered as <Link> → <a>, so reset anchor defaults */
+  text-decoration: none;
+  color: inherit;
+  /* also reset button defaults in case it's ever rendered as a button */
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-family: inherit;
+}
+
+.ticketContainer:hover {
+  gap: 24px;
+  transform: translateY(-5px) scale(1.02);
+}
+
+.ticketContainer:active {
+  transform: translateY(-2px) scale(1.005);
+}
+
+.ticketContainer:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 8px;
+  border-radius: 36px;
+}
+
+/* ═══ Main ticket ═══ */
+.ticketMain {
+  position: relative;
+  width: 380px;
+  height: 270px;
+  background: var(--paper-color);
+  padding: 32px;
+  border-radius: 24px 36px 36px 24px;
+}
+
+@supports (corner-shape: bevel) {
+  .ticketMain {
+    corner-shape: squircle scoop scoop squircle;
+  }
+}
+
+.ticketContent {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  text-align: left;
+}
+
+.ticketHeader {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #888;
+}
+
+.serial {
+  color: var(--accent-color);
+}
+
+.title {
+  font-family: var(--font-cinzel), "Cinzel", serif;
+  font-size: 2.8rem;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -1px;
+  margin: 16px 0 8px;
+}
+
+.subtitle {
+  font-size: 0.9rem;
+  letter-spacing: 1px;
+  color: #666;
+}
+
+.ticketFooter {
+  display: flex;
+  gap: 40px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  padding-top: 16px;
+}
+
+.infoBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.label {
+  font-size: 0.65rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.value {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.perforationLine {
+  position: absolute;
+  right: -2px;
+  top: 40px;
+  bottom: 40px;
+  width: 4px;
+  background-image: linear-gradient(
+    to bottom,
+    transparent 50%,
+    rgba(0, 0, 0, 0.15) 50%
+  );
+  background-size: 100% 12px;
+  transition: opacity 0.3s ease;
+}
+
+.ticketContainer:hover .perforationLine {
+  opacity: 0;
+}
+
+/* ═══ Tear-away stub ═══ */
+.ticketStub {
+  position: relative;
+  width: 140px;
+  height: 270px;
+  background: var(--paper-color);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  padding: 32px 0;
+  border-radius: 36px 24px 24px 36px;
+}
+
+@supports (corner-shape: bevel) {
+  .ticketStub {
+    corner-shape: scoop squircle squircle scoop;
+  }
+}
+
+/* ═══ Holographic foil seal ═══ */
+.foilSeal {
+  min-width: 48px;
+  min-height: 48px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(
+    135deg,
+    #e0e0e0,
+    #ffffff 40%,
+    #a8a8a8 60%,
+    #e0e0e0
+  );
+  background-size: 200% 200%;
+  animation: shimmer 3s infinite linear;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+@supports (corner-shape: bevel) {
+  .foilSeal {
+    corner-shape: notch;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ═══ Barcode ═══ */
+.barcode {
+  width: 40px;
+  height: 90px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--ink-color),
+    var(--ink-color) 2px,
+    transparent 2px,
+    transparent 4px,
+    var(--ink-color) 4px,
+    var(--ink-color) 5px,
+    transparent 5px,
+    transparent 8px
+  );
+  opacity: 0.8;
+}
+
+.stubText {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 3px;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  color: var(--accent-color);
+  margin: 0;
+}
+
+/* ═══ CTA cue arrows — animated anticlockwise arcs pointing at the ticket
+       Two SVG arcs: top one bows up over the ticket and ends with the head
+       pointing down; bottom one bows under and ends pointing up. Drawn via
+       stroke-dashoffset, fade out, restart. The two are offset on the loop
+       so one is always animating. Decorative only. ═══ */
+.cueArrow {
+  position: absolute;
+  left: 50%;
+  z-index: 5;
+  transform: translateX(-50%);
+  width: clamp(160px, 22vw, 220px);
+  pointer-events: none;
+}
+
+.cueArrowTop {
+  /* Sits above the ticket — ticket is 270px tall on desktop, centred. */
+  top: calc(50% - 220px);
+}
+
+.cueArrowBottom {
+  bottom: calc(50% - 220px);
+}
+
+.cueArrow svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.cueArrowPath {
+  stroke: var(--accent-color);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  opacity: 0;
+  animation: cueArrowDraw 3.6s ease-in-out infinite;
+}
+
+.cueArrowBottom .cueArrowPath {
+  /* Stagger so the bottom arrow draws while the top is fading out. */
+  animation-delay: 1.8s;
+}
+
+@keyframes cueArrowDraw {
+  0% {
+    stroke-dashoffset: 100;
+    opacity: 0;
+  }
+  8% {
+    stroke-dashoffset: 100;
+    opacity: 1;
+  }
+  45% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  72% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+.cueArrowText {
+  font-family: var(--font-manrope), "Manrope", system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  font-style: italic;
+  letter-spacing: 0.4px;
+  fill: var(--accent-color);
+  opacity: 0;
+  animation: cueArrowTextNudge 3.6s ease-in-out infinite;
+}
+
+.cueArrowBottom .cueArrowText {
+  animation-delay: 1.8s;
+}
+
+@keyframes cueArrowTextNudge {
+  0%, 8% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+  20% {
+    opacity: 0.95;
+    transform: translateY(-2px);
+  }
+  72% {
+    opacity: 0.95;
+    transform: translateY(-2px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+}
+
+/* ═══ Responsive — shrink the ticket on phones ═══ */
+@media (max-width: 640px) {
+  .ticketMain {
+    width: 260px;
+    height: 230px;
+    padding: 22px;
+  }
+  .ticketStub {
+    width: 90px;
+    height: 230px;
+    gap: 20px;
+  }
+  .title {
+    font-size: 2rem;
+    margin: 10px 0 6px;
+  }
+  .subtitle {
+    font-size: 0.8rem;
+  }
+  .ticketFooter {
+    gap: 22px;
+  }
+  .barcode {
+    width: 28px;
+    height: 70px;
+  }
+  .foilSeal,
+  .foilSeal {
+    min-width: 40px;
+    min-height: 40px;
+    width: 40px;
+    height: 40px;
+  }
+
+  /* Arrows hug the smaller ticket more closely on mobile. */
+  .cueArrowTop {
+    top: calc(50% - 180px);
+  }
+  .cueArrowBottom {
+    bottom: calc(50% - 180px);
+  }
+  .cueArrow {
+    width: clamp(140px, 50vw, 200px);
+  }
+  .cueArrowText {
+    font-size: 10px;
+  }
+}

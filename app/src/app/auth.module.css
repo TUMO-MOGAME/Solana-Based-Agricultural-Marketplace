@@ -1,0 +1,634 @@
+/* Auth pages (login + signup)
+   Aesthetic lifted 1:1 from the reference designer-card:
+   dark plum background, coral/amber radial blobs, glass card with
+   backdrop-blur, noise overlay, coral accent gradient, Inter font.
+   Forms restyled with icon slots + strong contrast so fields are clearly visible. */
+
+.wrapper {
+  position: relative;
+  height: 100vh;
+  height: 100svh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: clamp(12px, 2.5vh, 28px) clamp(12px, 4vw, 24px);
+  background: #1a0f0c;
+  color: rgba(255, 245, 230, 0.95);
+  overflow: hidden;  /* card is sized to fit — no scroll */
+
+  --auth-bg: #1a0f0c;
+  --auth-card-bg: rgba(255, 255, 255, 0.04);
+  --auth-card-bg-fallback: rgba(26, 15, 12, 0.88);
+  --auth-text: rgba(255, 245, 230, 0.95);
+  --auth-muted: rgba(255, 230, 210, 0.72);
+  --auth-muted-soft: rgba(255, 230, 210, 0.5);
+  --auth-input-bg: rgba(0, 0, 0, 0.28);
+  --auth-input-border: rgba(255, 230, 210, 0.14);
+  --auth-input-border-hover: rgba(255, 230, 210, 0.3);
+  --auth-accent-gradient: linear-gradient(135deg, #ff7b6b, #ffb86b);
+}
+
+/* Background colour blobs */
+.bg {
+  position: absolute;
+  inset: -50%;
+  background:
+    radial-gradient(circle at 20% 30%, #ff7b6b, transparent 35%),
+    radial-gradient(circle at 75% 65%, #ffb86b, transparent 40%);
+  filter: blur(140px);
+  opacity: 0.28;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ═══ The glass card ═══ */
+.card {
+  position: relative;
+  z-index: 1;
+  width: min(440px, 100%);
+  max-height: 100%;  /* stay within the wrapper viewport */
+  padding: clamp(20px, 3vh, 36px) clamp(22px, 5vw, 38px);
+  background: var(--auth-card-bg);
+  border-radius: 20px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow:
+    0 40px 80px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transform-style: preserve-3d;
+  will-change: transform;
+  isolation: isolate;  /* keep pseudo-elements inside this stacking context */
+  /* Start hidden so there's no flash before GSAP animates in.
+     auth-card.tsx animates opacity:1 / y:0 on mount. */
+  opacity: 0;
+  transform: translateY(60px);
+}
+
+/* Browsers without backdrop-filter: make the card solid enough to read */
+@supports not ((backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px))) {
+  .card {
+    background: var(--auth-card-bg-fallback);
+  }
+}
+
+/* Noise overlay — stays BEHIND content thanks to isolation + z-index layering */
+.card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.08'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Splash top-right */
+.splash {
+  position: absolute;
+  top: -60px;
+  right: -60px;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(
+    circle at 30% 30%,
+    #ff7b6b,
+    #ffb86b 60%,
+    transparent 70%
+  );
+  opacity: 0.4;
+  filter: blur(60px);
+  pointer-events: none;
+  mix-blend-mode: screen;
+  z-index: 0;
+}
+
+/* All real content lives above the noise / splash.
+   Scrollable as a safety net on very short viewports so nothing ever
+   overlaps the card edges. Scrollbar stays thin and tinted to match. */
+.cardInner {
+  position: relative;
+  z-index: 2;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 230, 210, 0.2) transparent;
+  /* breathing room so the scrollbar doesn't hug the rounded card edge */
+  padding-right: 2px;
+}
+
+.cardInner::-webkit-scrollbar {
+  width: 6px;
+}
+
+.cardInner::-webkit-scrollbar-thumb {
+  background: rgba(255, 230, 210, 0.18);
+  border-radius: 6px;
+}
+
+/* ═══ Title ═══ */
+.title {
+  font-size: clamp(30px, 5.2vh, 44px);
+  font-weight: 900;
+  line-height: 0.95;
+  letter-spacing: -1px;
+  margin: 0;
+}
+
+.title span {
+  display: block;
+  background: linear-gradient(120deg, #fff2cc, #ffd699, #fff2cc);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  /* Pre-hidden for the stagger animation in auth-card.tsx. */
+  opacity: 0;
+  transform: translateY(40px);
+}
+
+.subtitle {
+  margin-top: clamp(8px, 1.3vh, 14px);
+  font-size: 12px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--auth-muted);
+}
+
+.divider {
+  margin: clamp(12px, 2vh, 22px) 0 clamp(8px, 1.2vh, 12px);
+  height: 1px;
+  background: linear-gradient(to right, transparent, #fff, transparent);
+  opacity: 0.2;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  margin: 0 auto clamp(10px, 1.6vh, 18px);
+  border-radius: 50%;
+  background: var(--auth-accent-gradient);
+  opacity: 0.7;
+}
+
+/* ═══ Form ═══ */
+.form {
+  display: grid;
+  gap: clamp(8px, 1.2vh, 12px);
+}
+
+.field {
+  display: grid;
+  gap: clamp(4px, 0.7vh, 6px);
+}
+
+.label {
+  font-size: 11px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--auth-muted);
+}
+
+/* Icon + input row */
+.inputWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.icon {
+  position: absolute;
+  left: 14px;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: url(#auth-accent-gradient);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.75;
+  pointer-events: none;
+  /* initial state for the GSAP stroke-draw animation */
+  stroke-dasharray: 80;
+  stroke-dashoffset: 80;
+}
+
+.input {
+  width: 100%;
+  padding: clamp(10px, 1.5vh, 13px) 14px clamp(10px, 1.5vh, 13px) 42px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--auth-text);
+  background: var(--auth-input-bg);
+  border: 1px solid var(--auth-input-border);
+  border-radius: 12px;
+  outline: none;
+  transition:
+    border-color 0.25s ease,
+    background-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.input::placeholder {
+  color: var(--auth-muted-soft);
+}
+
+.input:hover {
+  border-color: var(--auth-input-border-hover);
+}
+
+.input:focus {
+  border-color: rgba(255, 184, 107, 0.55);
+  background: rgba(0, 0, 0, 0.38);
+  box-shadow:
+    0 0 0 3px rgba(255, 123, 107, 0.12),
+    0 0 24px rgba(255, 184, 107, 0.15);
+}
+
+/* ═══ Remember me + Forgot password row (login) ═══ */
+.options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: -4px;
+  margin-bottom: -2px;
+}
+
+.remember {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--auth-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border: 1px solid var(--auth-input-border);
+  background: var(--auth-input-bg);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.checkbox:hover {
+  border-color: var(--auth-input-border-hover);
+}
+
+.checkbox:checked {
+  background: var(--auth-accent-gradient);
+  border-color: transparent;
+}
+
+.checkbox:checked::after {
+  content: "";
+  width: 9px;
+  height: 5px;
+  border-left: 2px solid #1a0f0c;
+  border-bottom: 2px solid #1a0f0c;
+  transform: rotate(-45deg) translate(1px, -1px);
+}
+
+.forgot {
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--auth-muted);
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.2s ease;
+}
+
+.forgot:hover {
+  background: var(--auth-accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ═══ Submit button ═══ */
+.submit {
+  margin-top: clamp(4px, 0.8vh, 10px);
+  padding: clamp(11px, 1.7vh, 14px) 18px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: #1a0f0c;
+  background: var(--auth-accent-gradient);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.25s ease, opacity 0.2s ease;
+}
+
+.submit:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 32px rgba(255, 123, 107, 0.3);
+}
+
+.submit:active {
+  transform: translateY(0);
+}
+
+.submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ═══ Alt link (sign up ↔ sign in) ═══ */
+.altLink {
+  margin-top: clamp(10px, 1.6vh, 18px);
+  font-size: 13px;
+  text-align: center;
+  color: var(--auth-muted);
+}
+
+.altLink a {
+  background: var(--auth-accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 700;
+  text-decoration: none;
+  letter-spacing: 0.5px;
+  transition: opacity 0.2s ease;
+}
+
+.altLink a:hover {
+  opacity: 0.75;
+}
+
+/* ═══ Watermark ═══ */
+.watermark {
+  position: absolute;
+  bottom: -30px;
+  right: -20px;
+  font-size: 130px;
+  font-weight: 900;
+  letter-spacing: -8px;
+  color: rgba(255, 255, 255, 0.04);
+  transform: rotate(-8deg);
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  z-index: 1;
+}
+
+/* ═══ Social sign-in ═══
+   Three equal-width pills in one row so the block stays compact and the
+   card still fits within a 720px viewport without scrolling. */
+.socialGroup {
+  display: grid;
+  gap: 8px;
+  margin-bottom: clamp(8px, 1.2vh, 12px);
+}
+
+.socialRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.socialBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: clamp(8px, 1.2vh, 11px) 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: var(--auth-text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--auth-input-border);
+  border-radius: 12px;
+  cursor: pointer;
+  min-width: 0;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease;
+}
+
+.socialBtn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.socialBtn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--auth-input-border-hover);
+  transform: translateY(-1px);
+}
+
+.socialBtn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.socialBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.socialIcon {
+  flex-shrink: 0;
+}
+
+/* ═══ "or use email" divider ═══ */
+.orDivider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: clamp(4px, 0.8vh, 8px) 0 clamp(2px, 0.4vh, 4px);
+  font-size: 10px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--auth-muted-soft);
+}
+
+.orDivider::before,
+.orDivider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(255, 230, 210, 0.18),
+    transparent
+  );
+}
+
+/* ═══ Password visibility toggle ═══ */
+.passwordToggle {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--auth-muted);
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.passwordToggle:hover {
+  color: var(--auth-text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.passwordToggle svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* When a toggle is present, keep text clear of it */
+.inputWithToggle {
+  padding-right: 44px;
+}
+
+/* ═══ Terms & conditions (signup) ═══ */
+.terms {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  letter-spacing: 0.2px;
+  color: var(--auth-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.terms .checkbox {
+  margin-top: 1px;
+}
+
+.terms a {
+  background: var(--auth-accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.terms a:hover {
+  opacity: 0.8;
+}
+
+/* ═══ Error message ═══ */
+.error {
+  margin: -2px 0 -2px;
+  padding: 10px 14px;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  color: #ffb0a3;
+  background: rgba(255, 123, 107, 0.1);
+  border: 1px solid rgba(255, 123, 107, 0.25);
+  border-radius: 10px;
+}
+
+.confirmationNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #f3e7df;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+}
+
+.confirmationNotice strong {
+  color: #ffd6c2;
+  font-weight: 600;
+}
+
+/* ═══ Short viewports ═══
+   On compact laptops/phones the social block adds enough height that the
+   ornaments (subtitle, accent divider + dot) need to give way. The form
+   itself stays fully visible — the cardInner scroll is a last-resort
+   fallback, not the primary strategy. */
+@media (max-height: 780px) {
+  .subtitle {
+    margin-top: 6px;
+  }
+  .divider {
+    margin: 12px 0 8px;
+  }
+  .dot {
+    margin-bottom: 10px;
+  }
+}
+
+@media (max-height: 720px) {
+  .watermark {
+    font-size: 100px;
+    bottom: -25px;
+  }
+  .title {
+    font-size: clamp(26px, 4.4vh, 34px);
+  }
+  .dot {
+    display: none;
+  }
+  .divider {
+    margin: 10px 0;
+  }
+}
+
+@media (max-height: 600px) {
+  .watermark {
+    font-size: 80px;
+    bottom: -20px;
+  }
+  .subtitle {
+    display: none;
+  }
+  .orDivider {
+    font-size: 9px;
+    letter-spacing: 2px;
+  }
+}

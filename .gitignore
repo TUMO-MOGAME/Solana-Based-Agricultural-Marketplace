@@ -1,0 +1,55 @@
+# --- Node / Next.js ---
+node_modules/
+.next/
+out/
+.env
+.env.local
+.env.*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.turbo/
+*.tsbuildinfo
+
+# --- Rust / Anchor ---
+target/
+.anchor/
+**/*.rs.bk
+test-ledger/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# --- Editors / OS ---
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/settings.json.example
+.idea/
+*.swp
+*~
+
+# --- Build artifacts (regenerable) ---
+# These ARE checked in for now because they're our deliverables,
+# but uncomment when we move to a CI build:
+# docs/proposal.pdf
+# design/mockups/*.png
+
+# --- Secrets ---
+*.pem
+*.key
+keypair.json
+*-keypair.json
+.secret
+secrets/
+.solana/
+
+# --- Logs ---
+logs/
+*.log

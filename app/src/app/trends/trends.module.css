@@ -1,0 +1,157 @@
+/* Trends — full-bleed monthly slideshow.
+   Direct port of the supplied reference design: black body, fullscreen
+   image slides with darkening overlay, scale-in title + slide-up
+   subtitle, ▲ / ▼ vertical nav with a momentary highlight on click.
+   Background images can be swapped from picsum to /public/trends/*.jpg
+   without touching CSS. */
+
+.wrapper {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+  background: black;
+  color: white;
+  font-family: var(--font-roboto), "Roboto", system-ui, sans-serif;
+}
+
+/* ── Slides ──────────────────────────────────────────────────────── */
+.slide {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0;
+  transition: opacity 1s ease-in-out;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 0 24px;
+}
+
+.slide.active {
+  opacity: 1;
+  z-index: 1;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.title,
+.month {
+  position: relative;
+  font-size: clamp(2rem, 5vw, 3.5em);
+  margin-bottom: 0.5em;
+  transform: scale(0);
+  opacity: 0;
+  transition: transform 0.6s ease, opacity 0.6s ease;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.subtitle,
+.event {
+  position: relative;
+  font-size: clamp(1rem, 2vw, 1.5em);
+  transform: translateY(30px);
+  opacity: 0;
+  transition: transform 0.6s ease, opacity 0.6s ease;
+  max-width: 800px;
+}
+
+.slide.animate .title,
+.slide.animate .month {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.slide.animate .subtitle,
+.slide.animate .event {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* ── Nav (▲ left / ▼ right at vertical centre, per the reference) ── */
+.nav {
+  position: absolute;
+  top: 50%;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 10;
+  transform: translateY(-50%);
+  padding: 0 clamp(8px, 2vw, 24px);
+}
+
+.navBtn {
+  pointer-events: all;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  padding: 0.6em 1.4em;
+  font-size: clamp(1.2em, 2.5vw, 2em);
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 10px;
+  font-family: inherit;
+  line-height: 1;
+}
+
+.navBtn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.1);
+}
+
+.navBtn.bump {
+  color: yellow;
+  transform: scale(1.2);
+  background: rgba(255, 255, 0, 0.2);
+}
+
+/* ── Back link ──────────────────────────────────────────────────── */
+.back {
+  position: absolute;
+  top: clamp(20px, 3vh, 32px);
+  left: clamp(20px, 4vw, 32px);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: none;
+  z-index: 20;
+  transition: color 0.2s ease;
+}
+
+.back:hover {
+  color: #ffffff;
+}
+
+/* ── Slide counter pill ─────────────────────────────────────────── */
+.counter {
+  position: absolute;
+  bottom: clamp(20px, 4vh, 36px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 8px 16px;
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+}

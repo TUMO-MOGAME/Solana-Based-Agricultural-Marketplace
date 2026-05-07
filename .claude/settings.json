@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python build_mockups.py)",
+      "Bash(mkdir -p docs design/mockups programs app api scripts)",
+      "Bash(mv \"Project_Vuna_Proposal.pdf\" docs/proposal.pdf)",
+      "Bash(mv \"Solana for African Development Research \\(1\\).pdf\" docs/source-paper.pdf)",
+      "Bash(mv \"Vuna_Mobile_Mockup.png\" design/mockups/mobile.png)",
+      "Bash(mv \"Vuna_Web_Mockup.png\" design/mockups/web.png)",
+      "Bash(npm test *)"
+    ]
+  }
+}
