@@ -204,7 +204,7 @@ export default function DashboardPage() {
     {
       icon: ShieldCheck,
       label: "Insurance",
-      href: "/insurance/11111111111111111111111111111111",
+      href: "/insurance/AShtE5mNczJqoLYSQzASMHb5vLiAb3RSavPoLW4NyzAd",
     },
     {
       icon: Wallet,
