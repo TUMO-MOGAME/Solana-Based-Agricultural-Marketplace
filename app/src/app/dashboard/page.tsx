@@ -52,6 +52,7 @@ import {
   type GrowPack,
 } from "@/lib/vuna/program";
 import { ApplyTab } from "./apply-tab";
+import { MarketplaceTab } from "./marketplace-tab";
 import { ListenButton } from "@/lib/vuna/listen-button";
 import styles from "./dashboard.module.css";
 
@@ -296,7 +297,6 @@ export default function DashboardPage() {
     {
       icon: ShoppingBag,
       label: "Marketplace",
-      meta: "soon",
       active: profileTab === "marketplace",
       onClick: () => goToTab("marketplace"),
     },
@@ -484,7 +484,7 @@ export default function DashboardPage() {
           ) : profileTab === "about" ? (
             <AboutTab user={user} />
           ) : profileTab === "marketplace" ? (
-            <ComingSoon label="Marketplace" />
+            <MarketplaceTab />
           ) : (
             <HistoryTab onViewPack={() => goToTab("insurance")} />
           )}
