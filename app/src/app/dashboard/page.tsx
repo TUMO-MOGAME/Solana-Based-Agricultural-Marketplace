@@ -47,12 +47,14 @@ import {
   getConnection,
   type GrowPack,
 } from "@/lib/vuna/program";
+import { ApplyTab } from "./apply-tab";
 import styles from "./dashboard.module.css";
 
-type ProfileTab = "active" | "insurance" | "history" | "about";
+type ProfileTab = "active" | "apply" | "insurance" | "history" | "about";
 
 const PROFILE_TABS: Array<{ id: ProfileTab; label: string }> = [
   { id: "active", label: "Active" },
+  { id: "apply", label: "Apply" },
   { id: "insurance", label: "Insurance" },
   { id: "history", label: "History" },
   { id: "about", label: "About" },
@@ -209,7 +211,8 @@ export default function DashboardPage() {
     {
       icon: Sprout,
       label: "Apply for Pack",
-      href: "/grow-pack/new",
+      active: profileTab === "apply",
+      onClick: () => goToTab("apply"),
     },
     {
       icon: ShieldCheck,
@@ -370,10 +373,11 @@ export default function DashboardPage() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  background: "#0B3D2E",
-                  color: "#E8B931",
-                  fontWeight: 700,
-                  fontSize: 28,
+                  background: "linear-gradient(135deg, #ff7b6b, #ffb86b)",
+                  color: "#1a0f0c",
+                  fontWeight: 800,
+                  fontSize: 18,
+                  letterSpacing: "0.04em",
                 }}
                 aria-label={user.name}
               >
@@ -406,7 +410,9 @@ export default function DashboardPage() {
 
           {/* Tabbed body */}
           {profileTab === "active" ? (
-            <ActiveTab firstName={firstName} />
+            <ActiveTab firstName={firstName} onApplyClick={() => goToTab("apply")} />
+          ) : profileTab === "apply" ? (
+            <ApplyTab />
           ) : profileTab === "insurance" ? (
             <InsuranceTab />
           ) : profileTab === "about" ? (
@@ -574,7 +580,13 @@ export default function DashboardPage() {
 //  Tabs
 // ============================================================================
 
-function ActiveTab({ firstName }: { firstName: string }) {
+function ActiveTab({
+  firstName,
+  onApplyClick,
+}: {
+  firstName: string;
+  onApplyClick: () => void;
+}) {
   const pct = Math.round(
     (ACTIVE_PACK.dayOfSeason / ACTIVE_PACK.totalDays) * 100,
   );
@@ -686,12 +698,14 @@ function ActiveTab({ firstName }: { firstName: string }) {
           <p className={styles.sessionSubtitle}>
             {ACTIVE_PACK.credit.label} · {ACTIVE_PACK.credit.trend}
           </p>
-          <Link
-            href="/grow-pack/new"
+          <button
+            type="button"
+            onClick={onApplyClick}
             className={styles.sessionCTA}
+            style={{ border: "none", cursor: "pointer", fontFamily: "inherit" }}
           >
             Plan next season
-          </Link>
+          </button>
         </div>
       </div>
     </div>

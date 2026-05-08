@@ -399,9 +399,9 @@
 /* ─── Profile header ─── */
 .profile {
   position: relative;
-  height: 280px;
-  min-height: 260px;
-  max-height: 340px;
+  height: 168px;
+  min-height: 160px;
+  max-height: 200px;
   border-radius: 20px;
   overflow: hidden;
   isolation: isolate;
@@ -450,43 +450,43 @@
 
 .profileAvatar {
   position: absolute;
-  bottom: 76px;
-  left: 28px;
+  bottom: 50px;
+  left: 20px;
   z-index: 3;
   display: flex;
   align-items: flex-end;
-  gap: 20px;
+  gap: 14px;
 }
 
 .profileImg {
-  width: 108px;
-  height: 108px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   object-fit: cover;
-  border: 3px solid var(--bg-deep);
+  border: 2px solid var(--bg-deep);
   box-shadow:
     0 0 0 1px rgba(255, 184, 107, 0.4),
-    0 20px 40px rgba(0, 0, 0, 0.5);
+    0 12px 24px rgba(0, 0, 0, 0.5);
   flex-shrink: 0;
 }
 
 .profileMeta {
-  padding-bottom: 8px;
+  padding-bottom: 4px;
 }
 
 .profileName {
-  font-size: 26px;
+  font-size: 18px;
   color: #fff;
-  font-weight: 900;
-  line-height: 1.1;
-  letter-spacing: -0.5px;
-  margin: 0 0 6px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.3px;
+  margin: 0 0 4px;
 }
 
 .profileRole {
-  font-size: 11px;
+  font-size: 10px;
   color: rgba(255, 230, 210, 0.8);
-  letter-spacing: 3px;
+  letter-spacing: 2px;
   text-transform: uppercase;
   font-weight: 600;
 }
@@ -497,7 +497,7 @@
   left: 0;
   right: 0;
   z-index: 3;
-  padding-left: 168px;
+  padding-left: 100px;
   display: flex;
   gap: 2px;
   overflow-x: auto;
@@ -507,10 +507,10 @@
 .profileMenu::-webkit-scrollbar { display: none; }
 
 .profileMenuLink {
-  padding: 18px 16px;
+  padding: 12px 14px;
   color: var(--text-soft);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 1px;
   text-transform: uppercase;
