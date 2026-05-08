@@ -27,6 +27,7 @@ import {
   quoteGrowPack,
   SERVICE_FEE_BPS_DEFAULT,
   fetchFarmerAccount,
+  fetchGrowPack,
 } from "@/lib/vuna/program";
 import styles from "./dashboard.module.css";
 
@@ -54,9 +55,16 @@ const CROPS = ["Maize", "Wheat", "Soybean", "Sorghum", "Beans"];
 export interface ApplyTabProps {
   /** Called once a Grow Pack has been successfully submitted on-chain. */
   onSuccess?: (info: { packAddress: string; txSignature: TransactionSignature }) => void;
+  /**
+   * Called when the user wants to jump from the Apply tab to the Insurance
+   * tab — e.g. after we detect they already have an active pack for the
+   * season. Optional so the standalone /grow-pack/new page (which has no
+   * sibling Insurance tab) can omit it.
+   */
+  onNavigateToInsurance?: () => void;
 }
 
-export function ApplyTab({ onSuccess }: ApplyTabProps) {
+export function ApplyTab({ onSuccess, onNavigateToInsurance }: ApplyTabProps) {
   const { connection } = useConnection();
   const { publicKey, sendTransaction, connecting } = useWallet();
   const { setVisible: setWalletModalVisible } = useWalletModal();
@@ -72,6 +80,10 @@ export function ApplyTab({ onSuccess }: ApplyTabProps) {
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // When set, the error is "you already have a pack for this season".
+  // Holding the address separately lets us render a clickable
+  // "Open on Insurance tab" action without parsing the error string.
+  const [existingPackAddress, setExistingPackAddress] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ sig: TransactionSignature; pack: string } | null>(null);
 
   const quote = useMemo(
@@ -92,6 +104,7 @@ export function ApplyTab({ onSuccess }: ApplyTabProps) {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    setExistingPackAddress(null);
     setSuccess(null);
 
     if (!publicKey) {
@@ -105,6 +118,22 @@ export function ApplyTab({ onSuccess }: ApplyTabProps) {
       const farmerIdHash = await farmerIdHashFrom(publicKey.toBase58());
       const [farmerAcc] = farmerPda(publicKey, farmerIdHash);
       const [packAcc] = packPda(farmerAcc, CURRENT_SEASON_ID);
+
+      // Pre-flight: a farmer can only have ONE Grow Pack per season — the
+      // pack PDA is deterministic in (farmer, season). If the pack already
+      // exists on-chain, the underlying init would fail with an opaque
+      // "account already in use" error from the system program. Catch it
+      // here and surface a useful message instead.
+      const existingPack = await fetchGrowPack(connection, packAcc);
+      if (existingPack) {
+        setBusy(false);
+        const addr = packAcc.toBase58();
+        setExistingPackAddress(addr);
+        setError(
+          `You already have an active Grow Pack for ${CURRENT_SEASON_ID} (${addr.slice(0, 4)}…${addr.slice(-4)}).`,
+        );
+        return;
+      }
 
       const existingFarmer = await fetchFarmerAccount(connection, farmerAcc);
 
@@ -326,9 +355,35 @@ export function ApplyTab({ onSuccess }: ApplyTabProps) {
               background: "rgba(255, 123, 107, 0.10)",
               border: "1px solid rgba(255, 123, 107, 0.35)",
               color: "#ffb0a3",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
             }}
           >
-            {error}
+            <span>{error}</span>
+            {existingPackAddress && onNavigateToInsurance ? (
+              <button
+                type="button"
+                onClick={onNavigateToInsurance}
+                style={{
+                  alignSelf: "flex-start",
+                  padding: "6px 12px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255, 184, 107, 0.5)",
+                  background: "rgba(255, 184, 107, 0.12)",
+                  color: "#ffb86b",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                Open on Insurance tab <ArrowRight size={12} />
+              </button>
+            ) : null}
           </div>
         ) : null}
 

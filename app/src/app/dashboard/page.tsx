@@ -45,6 +45,9 @@ import { WalletButton } from "@/lib/vuna/wallet-button";
 import {
   fetchGrowPack,
   getConnection,
+  farmerIdHashFrom,
+  farmerPda,
+  packPda,
   type GrowPack,
 } from "@/lib/vuna/program";
 import { ApplyTab } from "./apply-tab";
@@ -460,7 +463,7 @@ export default function DashboardPage() {
           {profileTab === "active" ? (
             <ActiveTab firstName={firstName} onApplyClick={() => goToTab("apply")} />
           ) : profileTab === "apply" ? (
-            <ApplyTab />
+            <ApplyTab onNavigateToInsurance={() => goToTab("insurance")} />
           ) : profileTab === "insurance" ? (
             <InsuranceTab />
           ) : profileTab === "about" ? (
@@ -468,7 +471,7 @@ export default function DashboardPage() {
           ) : profileTab === "marketplace" ? (
             <ComingSoon label="Marketplace" />
           ) : (
-            <ComingSoon label="History" />
+            <HistoryTab onViewPack={() => goToTab("insurance")} />
           )}
         </div>
       </main>
@@ -782,16 +785,40 @@ function ActiveTab({
 }
 
 function InsuranceTab() {
+  const { publicKey: walletPubkey } = useWallet();
   const [pack, setPack] = useState<GrowPack | null>(null);
+  const [packAddress, setPackAddress] = useState<string>(DEMO_PACK_ADDRESS);
+  const [isPreview, setIsPreview] = useState<boolean>(false);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "missing" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState<string>("");
 
   useEffect(() => {
     let cancelled = false;
+    setLoadState("loading");
     (async () => {
       try {
         const conn = getConnection();
-        const pubkey = new PublicKey(DEMO_PACK_ADDRESS);
+        let pubkey: PublicKey;
+        let preview = false;
+
+        if (walletPubkey) {
+          // Wallet connected → derive *this farmer's* pack PDA for the
+          // current season. Same derivation as the Apply tab uses.
+          const farmerIdHash = await farmerIdHashFrom(walletPubkey.toBase58());
+          const [farmerAcc] = farmerPda(walletPubkey, farmerIdHash);
+          const seasonId = new Date().getFullYear();
+          [pubkey] = packPda(farmerAcc, seasonId);
+        } else {
+          // No wallet → fall back to the hardcoded demo pack so the
+          // screen has something to show for unconnected viewers.
+          pubkey = new PublicKey(DEMO_PACK_ADDRESS);
+          preview = true;
+        }
+
+        if (cancelled) return;
+        setPackAddress(pubkey.toBase58());
+        setIsPreview(preview);
+
         const data = await fetchGrowPack(conn, pubkey);
         if (cancelled) return;
         if (!data) {
@@ -809,7 +836,7 @@ function InsuranceTab() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [walletPubkey]);
 
   if (loadState === "loading") {
     return (
@@ -849,7 +876,9 @@ function InsuranceTab() {
           </div>
           <div className={styles.boxBody}>
             <span style={{ fontSize: 13, color: "rgba(255, 230, 210, 0.72)" }}>
-              You don&apos;t have an active Grow Pack with insurance cover yet. Apply for one and the policy goes live the moment your inputs are delivered.
+              {walletPubkey
+                ? "You don't have an active Grow Pack for this season yet. Open the Apply tab to request one — the drought policy goes live the moment your inputs are delivered."
+                : "Connect your wallet to see your drought protection. Without one, this view falls back to a sample pack."}
             </span>
           </div>
         </div>
@@ -867,6 +896,20 @@ function InsuranceTab() {
 
   return (
     <div className={styles.timelineSingle}>
+      {isPreview ? (
+        <div
+          className={styles.box}
+          style={{
+            background: "rgba(255, 184, 107, 0.06)",
+            border: "1px solid rgba(255, 184, 107, 0.25)",
+          }}
+        >
+          <div className={styles.boxBody} style={{ fontSize: 12, color: "rgba(255, 230, 210, 0.72)" }}>
+            <strong style={{ color: "#ffb86b" }}>Sample pack</strong> — connect your wallet to see your own Grow Pack here.
+          </div>
+        </div>
+      ) : null}
+
       {/* Big payout banner */}
       <div
         className={`${styles.box} ${styles.session}`}
@@ -970,7 +1013,7 @@ function InsuranceTab() {
             <DetailRow label="Threshold" value={`${pack.thresholdPercent}% of norm`} />
             <DetailRow label="Max payout" value={formatRand(pack.maxPayout)} />
             <DetailRow label="Insurance payout" value={formatRand(pack.insurancePayout)} highlight />
-            <DetailRow label="Pack" value={shortPackId(DEMO_PACK_ADDRESS)} mono />
+            <DetailRow label="Pack" value={shortPackId(packAddress)} mono />
           </div>
         </div>
       </div>
@@ -1122,6 +1165,204 @@ function formatRand(amount: bigint | number): string {
 function shortPackId(id: string): string {
   if (id.length <= 8) return id;
   return `${id.slice(0, 4)}…${id.slice(-4)}`;
+}
+
+// ============================================================================
+//  History tab — past + current Grow Packs for the connected farmer
+// ============================================================================
+
+const HISTORY_SEASONS_LOOKBACK = 3; // current year + 2 prior
+
+type HistoryRow = {
+  season: number;
+  address: string;
+  pack: GrowPack;
+};
+
+function HistoryTab({ onViewPack }: { onViewPack: () => void }) {
+  const { publicKey: walletPubkey } = useWallet();
+  const [rows, setRows] = useState<HistoryRow[]>([]);
+  const [state, setState] = useState<"loading" | "ready" | "no-wallet" | "empty" | "error">("loading");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => {
+    if (!walletPubkey) {
+      setState("no-wallet");
+      setRows([]);
+      return;
+    }
+
+    let cancelled = false;
+    setState("loading");
+
+    (async () => {
+      try {
+        const conn = getConnection();
+        const farmerIdHash = await farmerIdHashFrom(walletPubkey.toBase58());
+        const [farmerAcc] = farmerPda(walletPubkey, farmerIdHash);
+
+        const currentYear = new Date().getFullYear();
+        const seasons = Array.from(
+          { length: HISTORY_SEASONS_LOOKBACK },
+          (_, i) => currentYear - i,
+        );
+
+        // Fetch every season in parallel — devnet RPC handles this fine
+        // for a small number of accounts and the pack PDAs we don't have
+        // simply come back as nulls.
+        const fetched = await Promise.all(
+          seasons.map(async (season) => {
+            const [packAcc] = packPda(farmerAcc, season);
+            const data = await fetchGrowPack(conn, packAcc);
+            return { season, address: packAcc.toBase58(), data };
+          }),
+        );
+
+        if (cancelled) return;
+
+        const existing: HistoryRow[] = fetched
+          .filter(
+            (r): r is { season: number; address: string; data: GrowPack } =>
+              r.data !== null,
+          )
+          .map(({ season, address, data }) => ({ season, address, pack: data }));
+
+        setRows(existing);
+        setState(existing.length > 0 ? "ready" : "empty");
+      } catch (e) {
+        if (cancelled) return;
+        setErrorMsg(e instanceof Error ? e.message : String(e));
+        setState("error");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [walletPubkey]);
+
+  if (state === "no-wallet") {
+    return (
+      <div className={styles.timelineSingle}>
+        <div className={styles.box}>
+          <div className={styles.boxHeader}>
+            <h2 className={styles.boxTitle}>History</h2>
+          </div>
+          <div className={styles.boxBody}>
+            <span style={{ fontSize: 13, color: "rgba(255, 230, 210, 0.72)" }}>
+              Connect your wallet to see Grow Packs from past seasons.
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === "loading") {
+    return (
+      <div className={styles.timelineSingle}>
+        <div className={styles.box}>
+          <div className={styles.boxBody} style={{ textAlign: "center", padding: 28 }}>
+            <span style={{ fontSize: 13, color: "rgba(255, 230, 210, 0.55)" }}>
+              Reading your Grow Pack history from devnet…
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === "error") {
+    return (
+      <div className={styles.timelineSingle}>
+        <div className={styles.box}>
+          <div className={styles.boxHeader}>
+            <h2 className={styles.boxTitle}>Couldn&apos;t reach the chain</h2>
+          </div>
+          <div className={styles.boxBody}>
+            <span style={{ fontSize: 12, color: "rgba(255, 230, 210, 0.55)" }}>
+              {errorMsg}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === "empty") {
+    return (
+      <div className={styles.timelineSingle}>
+        <div className={styles.box}>
+          <div className={styles.boxHeader}>
+            <h2 className={styles.boxTitle}>No Grow Packs yet</h2>
+          </div>
+          <div className={styles.boxBody}>
+            <span style={{ fontSize: 13, color: "rgba(255, 230, 210, 0.72)" }}>
+              You haven&apos;t requested a Grow Pack from this wallet in the last{" "}
+              {HISTORY_SEASONS_LOOKBACK} seasons. Open the Apply tab to get started.
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.timelineSingle}>
+      <div style={{ display: "grid", gap: 12 }}>
+        {rows.map((row) => (
+          <HistoryCard key={row.address} row={row} onView={onViewPack} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HistoryCard({ row, onView }: { row: HistoryRow; onView: () => void }) {
+  const { season, address, pack } = row;
+  const currentYear = new Date().getFullYear();
+  const isCurrent = season === currentYear;
+
+  return (
+    <div className={styles.box}>
+      <div className={styles.boxHeader}>
+        <h2 className={styles.boxTitle}>Season {season}</h2>
+        <span className={styles.boxLabel}>
+          {isCurrent ? "Current" : "Past"}
+        </span>
+      </div>
+      <div className={styles.boxBody}>
+        <DetailRow label="Status" value={pack.status} highlight />
+        <DetailRow label="Bundle cost" value={formatRand(pack.bundleCost)} />
+        <DetailRow label="Total repayment" value={formatRand(pack.totalRepayment)} />
+        <DetailRow
+          label="Insurance payout"
+          value={formatRand(pack.insurancePayout)}
+        />
+        <DetailRow label="Pack" value={shortPackId(address)} mono />
+        {isCurrent ? (
+          <button
+            type="button"
+            onClick={onView}
+            style={{
+              marginTop: 12,
+              padding: "8px 14px",
+              borderRadius: 999,
+              border: "1px solid rgba(255, 184, 107, 0.5)",
+              background: "rgba(255, 184, 107, 0.12)",
+              color: "#ffb86b",
+              fontSize: 11,
+              fontWeight: 700,
+              fontFamily: "inherit",
+              cursor: "pointer",
+            }}
+          >
+            View on Insurance tab →
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 function AboutTab({ user }: { user: DashUser }) {

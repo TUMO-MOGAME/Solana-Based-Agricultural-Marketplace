@@ -18,7 +18,7 @@ import {
   WalletProvider,
 } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
-import { PhantomWalletAdapter } from "@solana/wallet-adapter-wallets";
+import { SolflareWalletAdapter } from "@solana/wallet-adapter-wallets";
 
 // Default wallet-adapter UI styles — we restyle them in globals.css.
 import "@solana/wallet-adapter-react-ui/styles.css";
@@ -29,11 +29,18 @@ const RPC_URL =
 export function VunaWalletProvider({ children }: { children: ReactNode }) {
   // useMemo — wallet adapters create internal listeners on construction;
   // we only want one set per mount, not one per re-render.
-  const wallets = useMemo(() => [new PhantomWalletAdapter()], []);
+  //
+  // Phantom is intentionally NOT listed here. Modern Phantom (and Brave
+  // Wallet, Backpack) self-register via the Wallet Standard, and adding
+  // a manual PhantomWalletAdapter on top causes the runtime warning
+  // "The Wallet Adapter for Phantom can be removed from your app." We
+  // still ship Solflare as a manual adapter because not every Solflare
+  // install registers itself yet, depending on version.
+  const wallets = useMemo(() => [new SolflareWalletAdapter()], []);
 
   return (
     <ConnectionProvider endpoint={RPC_URL}>
-      <WalletProvider wallets={wallets} autoConnect={false}>
+      <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
