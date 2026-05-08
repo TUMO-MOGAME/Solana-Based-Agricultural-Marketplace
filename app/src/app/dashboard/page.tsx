@@ -48,10 +48,19 @@ import {
   type GrowPack,
 } from "@/lib/vuna/program";
 import { ApplyTab } from "./apply-tab";
+import { ListenButton } from "@/lib/vuna/listen-button";
 import styles from "./dashboard.module.css";
 
-type ProfileTab = "active" | "apply" | "insurance" | "history" | "about";
+type ProfileTab =
+  | "active"
+  | "apply"
+  | "insurance"
+  | "history"
+  | "about"
+  | "marketplace";
 
+// Tabs surfaced in the profile-header menu. "marketplace" is reachable
+// only via the sidebar nav, so it's intentionally absent here.
 const PROFILE_TABS: Array<{ id: ProfileTab; label: string }> = [
   { id: "active", label: "Active" },
   { id: "apply", label: "Apply" },
@@ -59,6 +68,10 @@ const PROFILE_TABS: Array<{ id: ProfileTab; label: string }> = [
   { id: "history", label: "History" },
   { id: "about", label: "About" },
 ];
+
+// localStorage key for the IDs of alerts the user has dismissed via
+// the bell. Persisted across reloads so the unread badge stays cleared.
+const DISMISSED_ALERTS_KEY = "vuna.dismissedAlerts";
 
 /** The demo Grow Pack we created via scripts/setup-devnet-demo.mjs. */
 const DEMO_PACK_ADDRESS = "AShtE5mNczJqoLYSQzASMHb5vLiAb3RSavPoLW4NyzAd";
@@ -115,9 +128,41 @@ export default function DashboardPage() {
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
   const [profileTab, setProfileTab] = useState<ProfileTab>("active");
-  const [notifOpen, setNotifOpen] = useState(false);
+  const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(
+    new Set(),
+  );
   const { publicKey: walletPubkey } = useWallet();
   const { setVisible: setWalletModalVisible } = useWalletModal();
+
+  // Hydrate dismissed-alert IDs from localStorage on mount. Keep it in
+  // an effect (not lazy useState init) so SSR and the first client
+  // render agree — preventing hydration mismatches.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(DISMISSED_ALERTS_KEY);
+      if (!raw) return;
+      const ids: unknown = JSON.parse(raw);
+      if (Array.isArray(ids)) {
+        setDismissedAlertIds(new Set(ids.filter((x): x is string => typeof x === "string")));
+      }
+    } catch {
+      /* corrupt entry — ignore and let the user re-dismiss */
+    }
+  }, []);
+
+  const dismissAllAlerts = () => {
+    const allIds = ALERTS.map((a) => a.id);
+    setDismissedAlertIds(new Set(allIds));
+    try {
+      window.localStorage.setItem(
+        DISMISSED_ALERTS_KEY,
+        JSON.stringify(allIds),
+      );
+    } catch {
+      /* private mode / quota — UI state still updates for this session */
+    }
+  };
 
   // Supabase user load (or stub in demo mode)
   useEffect(() => {
@@ -234,13 +279,12 @@ export default function DashboardPage() {
       icon: ShoppingBag,
       label: "Marketplace",
       meta: "soon",
-      onClick: () => {
-        /* not yet built — see app/CLAUDE.md roadmap */
-      },
+      active: profileTab === "marketplace",
+      onClick: () => goToTab("marketplace"),
     },
   ];
 
-  const unreadCount = ALERTS.length;
+  const unreadCount = ALERTS.filter((a) => !dismissedAlertIds.has(a.id)).length;
 
   return (
     <div className={styles.container}>
@@ -337,7 +381,11 @@ export default function DashboardPage() {
             <input
               type="text"
               className={styles.searchInput}
-              placeholder="Search farmers, packs, suppliers…"
+              placeholder="Search — coming soon"
+              disabled
+              aria-disabled="true"
+              title="Search will be enabled once the marketplace + history tabs are wired up"
+              style={{ opacity: 0.55, cursor: "not-allowed" }}
             />
           </div>
 
@@ -417,6 +465,8 @@ export default function DashboardPage() {
             <InsuranceTab />
           ) : profileTab === "about" ? (
             <AboutTab user={user} />
+          ) : profileTab === "marketplace" ? (
+            <ComingSoon label="Marketplace" />
           ) : (
             <ComingSoon label="History" />
           )}
@@ -432,21 +482,32 @@ export default function DashboardPage() {
           {/* Wallet connect — replaces the placeholder mail icon */}
           <WalletButton className={styles.accountBtn} />
 
-          {/* Bell with unread badge */}
+          {/* Bell — clicking marks all alerts as read (clears the badge).
+              The alerts themselves stay visible in the rail below; this
+              is just a "I've seen these" acknowledgement. Dismissed
+              state persists via localStorage. */}
           <button
             type="button"
-            className={`${styles.accountBtn} ${notifOpen ? styles.active : ""}`}
+            className={styles.accountBtn}
             aria-label={
               unreadCount > 0
-                ? `Alerts (${unreadCount} unread)`
-                : "Alerts"
+                ? `Mark ${unreadCount} alert${unreadCount === 1 ? "" : "s"} as read`
+                : "All alerts read"
             }
-            aria-expanded={notifOpen}
             title={
-              unreadCount > 0 ? `${unreadCount} unread alerts` : "Alerts"
+              unreadCount > 0
+                ? `${unreadCount} unread — click to mark as read`
+                : "All caught up"
             }
-            onClick={() => setNotifOpen((v) => !v)}
-            style={{ position: "relative" }}
+            onClick={() => {
+              if (unreadCount > 0) dismissAllAlerts();
+            }}
+            disabled={unreadCount === 0}
+            style={{
+              position: "relative",
+              opacity: unreadCount === 0 ? 0.55 : 1,
+              cursor: unreadCount === 0 ? "default" : "pointer",
+            }}
           >
             <Bell />
             {unreadCount > 0 && (
@@ -560,7 +621,7 @@ export default function DashboardPage() {
         </div>
 
         <div className={styles.rightWrapper}>
-          <AlertsList />
+          <AlertsList dismissedIds={dismissedAlertIds} />
         </div>
       </aside>
 
@@ -590,6 +651,7 @@ function ActiveTab({
   const pct = Math.round(
     (ACTIVE_PACK.dayOfSeason / ACTIVE_PACK.totalDays) * 100,
   );
+  const greetingLine = `Hello ${firstName}. You are on day ${ACTIVE_PACK.dayOfSeason} of ${ACTIVE_PACK.totalDays} of your ${ACTIVE_PACK.crop.toLowerCase()} season — that is ${pct} percent of the way through. Rainfall this month is ${ACTIVE_PACK.weather.monthMm} millimetres, which is normal. Repayment of about ${ACTIVE_PACK.repayAtHarvest.replace("R ", "")} Rand is due at harvest.`;
 
   return (
     <div className={styles.timelineSingle}>
@@ -597,7 +659,14 @@ function ActiveTab({
         <div className={styles.box}>
           <div className={styles.boxHeader}>
             <h2 className={styles.boxTitle}>Sawubona, {firstName}</h2>
-            <span className={styles.boxLabel}>Active</span>
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+              <ListenButton
+                size="sm"
+                text={greetingLine}
+                ariaLabel="Listen — your daily summary, read aloud"
+              />
+              <span className={styles.boxLabel}>Active</span>
+            </div>
           </div>
           <div className={styles.boxBody}>
             <div className={styles.introItem}>
@@ -791,6 +860,10 @@ function InsuranceTab() {
   const triggered = pack.status === "InsurancePaid" || pack.insurancePayout > 0n;
   const rainfall = pack.rainfallPercentOfNorm;
   const observedMm = Math.round((rainfall / 100) * 80);
+  const payoutZAR = Number(pack.insurancePayout);
+  const voiceLine = triggered
+    ? `Hello. Rainfall has been low in your area — about ${rainfall} percent of normal. Your drought cover has paid you ${payoutZAR.toLocaleString("en-ZA")} Rand today. The money is on its way to your account. There is no paperwork to fill in, and no claim form to send.`
+    : `Rainfall in your area is ${rainfall} percent of normal. The threshold has not been crossed, so no payout is due yet. Your drought cover is still active.`;
 
   return (
     <div className={styles.timelineSingle}>
@@ -804,9 +877,26 @@ function InsuranceTab() {
           boxShadow: "0 14px 32px rgba(255, 123, 107, 0.18)",
         }}
       >
-        <div className={styles.sessionEyebrow}>
-          <span className={styles.sessionDot} />
-          {triggered ? "Payout sent" : "No payout due"}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div className={styles.sessionEyebrow}>
+            <span className={styles.sessionDot} />
+            {triggered ? "Payout sent" : "No payout due"}
+          </div>
+          <ListenButton
+            text={voiceLine}
+            ariaLabel={
+              triggered
+                ? "Listen — your drought payout, read aloud"
+                : "Listen — current rainfall status, read aloud"
+            }
+          />
         </div>
         <h3
           className={styles.sessionTitle}
@@ -1087,7 +1177,9 @@ function ComingSoon({ label }: { label: string }) {
 //  Right rail — alerts
 // ============================================================================
 
-function AlertsList() {
+function AlertsList({ dismissedIds }: { dismissedIds: Set<string> }) {
+  const allRead = ALERTS.every((a) => dismissedIds.has(a.id));
+
   return (
     <div style={{ padding: "16px 20px" }}>
       <h3
@@ -1099,60 +1191,66 @@ function AlertsList() {
           margin: "0 0 12px",
         }}
       >
-        Needs your attention
+        {allRead ? "All caught up" : "Needs your attention"}
       </h3>
       <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 12 }}>
-        {ALERTS.map((alert) => (
-          <li
-            key={alert.id}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "auto 1fr",
-              gap: 12,
-              alignItems: "start",
-            }}
-          >
-            <span
-              aria-hidden="true"
+        {ALERTS.map((alert) => {
+          const isRead = dismissedIds.has(alert.id);
+          return (
+            <li
+              key={alert.id}
               style={{
-                width: 4,
-                alignSelf: "stretch",
-                borderRadius: 4,
-                background: alert.severity === "warn" ? "#E67E22" : "#1F6B49",
+                display: "grid",
+                gridTemplateColumns: "auto 1fr",
+                gap: 12,
+                alignItems: "start",
+                opacity: isRead ? 0.5 : 1,
+                transition: "opacity 0.2s ease",
               }}
-            />
-            <div>
-              <div
+            >
+              <span
+                aria-hidden="true"
                 style={{
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: "rgba(255,255,255,0.92)",
+                  width: 4,
+                  alignSelf: "stretch",
+                  borderRadius: 4,
+                  background: alert.severity === "warn" ? "#E67E22" : "#1F6B49",
                 }}
-              >
-                {alert.title}
+              />
+              <div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: "rgba(255,255,255,0.92)",
+                  }}
+                >
+                  {alert.title}
+                </div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "rgba(255,255,255,0.6)",
+                    marginTop: 2,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {alert.body}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "rgba(255,255,255,0.4)",
+                    marginTop: 4,
+                  }}
+                >
+                  {alert.when}
+                  {isRead ? " · read" : null}
+                </div>
               </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "rgba(255,255,255,0.6)",
-                  marginTop: 2,
-                  lineHeight: 1.45,
-                }}
-              >
-                {alert.body}
-              </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "rgba(255,255,255,0.4)",
-                  marginTop: 4,
-                }}
-              >
-                {alert.when}
-              </div>
-            </div>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
