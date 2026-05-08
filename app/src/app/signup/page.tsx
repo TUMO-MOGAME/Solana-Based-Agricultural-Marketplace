@@ -10,6 +10,7 @@ import {
   createSupabaseBrowserClient,
   isSupabaseConfigured,
 } from "@/lib/supabase/client";
+import { mergeDemoUser } from "@/lib/vuna/demo-user";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -40,9 +41,12 @@ export default function SignupPage() {
     setBusy(true);
 
     // Demo mode: when Supabase env vars are not set, accept and go to the
-    // dashboard. Real signup with email confirmation kicks in automatically
-    // once NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY are populated.
+    // dashboard. We persist what the user typed so the dashboard shows
+    // their real name instead of a "Demo Farmer" stub.
+    // Real signup with email confirmation kicks in automatically once
+    // NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY are populated.
     if (!isSupabaseConfigured()) {
+      mergeDemoUser({ name, email });
       router.push("/dashboard");
       return;
     }

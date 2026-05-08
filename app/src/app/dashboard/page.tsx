@@ -41,6 +41,7 @@ import {
   createSupabaseBrowserClient,
   isSupabaseConfigured,
 } from "@/lib/supabase/client";
+import { readDemoUser, clearDemoUser } from "@/lib/vuna/demo-user";
 import { WalletButton } from "@/lib/vuna/wallet-button";
 import {
   fetchGrowPack,
@@ -170,7 +171,17 @@ export default function DashboardPage() {
   // Supabase user load (or stub in demo mode)
   useEffect(() => {
     if (!isSupabaseConfigured()) {
-      setUser({ name: "Demo Farmer", email: "demo@mazraat.local" });
+      // In demo mode, prefer values captured at signup/login. Falls back
+      // to the generic stub when nothing has been stored yet (e.g. fresh
+      // browser, or someone deep-linked to /dashboard before signing up).
+      const stored = readDemoUser();
+      const fallbackName = stored.email
+        ? stored.email.split("@")[0]?.replace(/[._-]+/g, " ") || stored.email
+        : "Demo Farmer";
+      setUser({
+        name: stored.name?.trim() || fallbackName,
+        email: stored.email?.trim() || "demo@mazraat.local",
+      });
       return;
     }
 
@@ -227,6 +238,10 @@ export default function DashboardPage() {
       } catch {
         /* offline — fall through to redirect */
       }
+    } else {
+      // Demo mode: drop the cached user so the next demo session
+      // starts fresh and doesn't leak the previous person's name.
+      clearDemoUser();
     }
     router.push("/");
   };

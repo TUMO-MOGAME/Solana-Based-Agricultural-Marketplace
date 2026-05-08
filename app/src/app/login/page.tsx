@@ -10,6 +10,7 @@ import {
   createSupabaseBrowserClient,
   isSupabaseConfigured,
 } from "@/lib/supabase/client";
+import { mergeDemoUser } from "@/lib/vuna/demo-user";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -30,9 +31,12 @@ export default function LoginPage() {
     setBusy(true);
 
     // Demo mode: when Supabase env vars are not set, accept anything and
-    // jump straight to the dashboard. Real auth kicks in automatically the
-    // moment NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY are populated.
+    // jump straight to the dashboard. We persist the typed email so the
+    // dashboard reflects this session's user. mergeDemoUser preserves
+    // any name captured at signup time. Real auth kicks in automatically
+    // the moment NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY are populated.
     if (!isSupabaseConfigured()) {
+      mergeDemoUser({ email });
       router.push("/dashboard");
       return;
     }
