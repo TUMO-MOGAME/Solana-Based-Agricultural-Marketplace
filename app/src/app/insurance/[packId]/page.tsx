@@ -1,14 +1,20 @@
-// /insurance/[packId] — drought-payout screen.
+// /insurance/[packId] — standalone shareable drought-payout page.
 //
-// Reads a GrowPack PDA from devnet via @core/lib/vuna/program and renders
-// the rainfall + payout view from design/mockups/mobile.png screen 4.
+// Server component — fetches the GrowPack from devnet at request time
+// via the Borsh decoder in @/lib/vuna/program. Anyone can open the URL
+// (no login, no wallet) and see the on-chain state.
 //
-// This is a SERVER component — it runs on the Next.js server, fetches the
-// account, and ships the rendered HTML. No wallet, no signing, just read.
+// Visual theme matches the dashboard's embedded Insurance tab so the app
+// feels one consistent piece across deep-links and in-app navigation.
 
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { PublicKey } from "@solana/web3.js";
-import { fetchGrowPack, getConnection, type GrowPack } from "@/lib/vuna/program";
+import {
+  fetchGrowPack,
+  getConnection,
+  type GrowPack,
+} from "@/lib/vuna/program";
 
 const ZAR_FORMATTER = new Intl.NumberFormat("en-ZA", {
   maximumFractionDigits: 0,
@@ -20,6 +26,11 @@ function formatRand(amount: bigint | number): string {
   return `R ${ZAR_FORMATTER.format(n)}`;
 }
 
+function shortPackId(id: string): string {
+  if (id.length <= 8) return id;
+  return `${id.slice(0, 4)}…${id.slice(-4)}`;
+}
+
 interface Props {
   params: Promise<{ packId: string }>;
 }
@@ -27,12 +38,13 @@ interface Props {
 export default async function InsurancePage({ params }: Props) {
   const { packId } = await params;
 
-  // Validate the URL param is a real Solana address.
   let pubkey: PublicKey;
   try {
     pubkey = new PublicKey(packId);
   } catch {
-    return <NotFoundCard reason="That pack address is not a valid Solana public key." />;
+    return (
+      <NotFoundShell reason="That pack address is not a valid Solana public key." />
+    );
   }
 
   const connection = getConnection();
@@ -45,234 +57,447 @@ export default async function InsurancePage({ params }: Props) {
   }
 
   if (error) {
-    return (
-      <NotFoundCard reason={`Network error reading the chain: ${error}`} />
-    );
+    return <NotFoundShell reason={`Network error reading the chain: ${error}`} />;
   }
   if (!pack) {
-    return <NotFoundCard reason="No Grow Pack at that address. Either the address is wrong or the account hasn't been created yet on this cluster." />;
+    return (
+      <NotFoundShell reason="No Grow Pack at that address. Either the address is wrong or the account hasn't been created yet on this cluster." />
+    );
   }
 
   const triggered =
     pack.status === "InsurancePaid" || pack.insurancePayout > 0n;
   const rainfall = pack.rainfallPercentOfNorm;
-  const expectedRainfallNorm = 100; // % of norm — display only
-  const observedRainfallEquivalentMm = Math.round((rainfall / 100) * 80);
+  const observedMm = Math.round((rainfall / 100) * 80);
 
   return (
-    <main className="min-h-screen bg-[#F5F2EA] text-[#1A1A1A] p-4 md:p-8">
-      <div className="max-w-md mx-auto">
-        {/* Header */}
-        <header className="mb-6">
-          <Link
-            href="/dashboard"
-            className="text-xs text-[#666666] hover:text-[#1A1A1A]"
-          >
-            ← Dashboard
-          </Link>
-          <h1 className="mt-3 text-2xl font-bold text-[#0B3D2E]">
-            Drought protection
-          </h1>
-          <p className="text-xs text-[#666666] mt-1">
-            Pack <code className="text-[10px]">{shortAddress(packId)}</code>
-            <span className="mx-2">·</span>
-            Season {pack.seasonId}
-          </p>
-        </header>
+    <Shell>
+      <Header packId={packId} seasonId={pack.seasonId} />
 
-        {/* Payout banner */}
-        {triggered ? (
-          <section
-            className="rounded-2xl p-5 mb-5"
-            style={{
-              backgroundColor: "#FAEBC3",
-              border: "2px solid #E8B931",
-            }}
-          >
-            <div className="text-[11px] uppercase tracking-wider font-bold text-[#E67E22]">
-              Payout sent
-            </div>
-            <div className="text-4xl font-bold text-[#1A1A1A] mt-2">
-              {formatRand(pack.insurancePayout)}
-            </div>
-            <p className="mt-2 text-sm font-bold text-[#1A1A1A]">
-              Sent to your account.
-            </p>
-            <p className="text-xs text-[#666666]">
-              No paperwork. No claim form.
-            </p>
-          </section>
-        ) : (
-          <section className="rounded-2xl p-5 mb-5 bg-white border border-[#E5E0D5]">
-            <div className="text-[11px] uppercase tracking-wider font-bold text-[#1F6B49]">
-              No payout due
-            </div>
-            <div className="text-2xl font-bold text-[#0B3D2E] mt-2">
-              Rainfall normal
-            </div>
-            <p className="mt-1 text-xs text-[#666666]">
-              Threshold not breached. Cover remains active.
-            </p>
-          </section>
-        )}
+      {/* Big payout banner */}
+      <section
+        style={{
+          padding: 22,
+          marginBottom: 14,
+          borderRadius: 18,
+          background:
+            "linear-gradient(135deg, rgba(255, 184, 107, 0.18), rgba(255, 123, 107, 0.10))",
+          border: "1px solid rgba(255, 184, 107, 0.45)",
+          boxShadow: "0 14px 32px rgba(255, 123, 107, 0.18)",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 800,
+            textTransform: "uppercase",
+            letterSpacing: "0.18em",
+            color: "#ffb86b",
+            marginBottom: 6,
+          }}
+        >
+          {triggered ? "Payout sent" : "No payout due"}
+        </div>
+        <div
+          style={{
+            fontSize: 44,
+            fontWeight: 800,
+            lineHeight: 1.05,
+            background: "linear-gradient(135deg, #ff7b6b, #ffb86b)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
+            color: "transparent",
+          }}
+        >
+          {formatRand(pack.insurancePayout)}
+        </div>
+        <p
+          style={{
+            marginTop: 10,
+            fontSize: 13,
+            color: "rgba(255, 245, 230, 0.92)",
+          }}
+        >
+          {triggered ? (
+            <>Sent to your account. <span style={{ color: "rgba(255, 230, 210, 0.55)" }}>No paperwork. No claim form.</span></>
+          ) : (
+            <>Threshold not breached. <span style={{ color: "rgba(255, 230, 210, 0.55)" }}>Cover remains active.</span></>
+          )}
+        </p>
+      </section>
 
-        {/* Why card */}
-        <section className="rounded-2xl bg-white border border-[#E5E0D5] p-5 mb-5">
-          <div className="text-[11px] uppercase tracking-wider font-bold text-[#666666]">
-            {triggered ? "Why you were paid" : "Rainfall observation"}
-          </div>
-          <div className="mt-3 text-sm text-[#1A1A1A]">
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 12,
+          marginBottom: 14,
+        }}
+        className="insurance-grid"
+      >
+        {/* Why you were paid */}
+        <Card>
+          <CardHeader
+            title={triggered ? "Why you were paid" : "Rainfall observation"}
+            label={`${rainfall}%`}
+          />
+          <div style={{ fontSize: 13, color: "rgba(255, 230, 210, 0.72)", marginBottom: 4 }}>
             Rainfall in your area
           </div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-[#1A1A1A] tabular-nums">
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: 8,
+              marginBottom: 14,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 36,
+                fontWeight: 700,
+                color: "rgba(255, 245, 230, 0.95)",
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
               {rainfall}%
             </span>
-            <span className="text-xs text-[#666666]">
-              of {expectedRainfallNorm}% norm (≈ {observedRainfallEquivalentMm}mm of 80mm)
+            <span style={{ fontSize: 12, color: "rgba(255, 230, 210, 0.55)" }}>
+              of 100% norm (≈ {observedMm}mm of 80mm)
             </span>
           </div>
-
-          {/* Bar chart — quick illustrative split, scaled to threshold */}
-          <RainfallBarChart
+          <RainfallBars
             rainfallPercent={rainfall}
             thresholdPercent={pack.thresholdPercent}
           />
-        </section>
-
-        {/* Footer reassurance */}
-        <section
-          className="rounded-2xl p-4 mb-5"
-          style={{ backgroundColor: "#E0EAE2" }}
-        >
-          <div className="text-sm font-bold text-[#0B3D2E]">
-            Your Grow Pack is still active.
-          </div>
-          <div className="text-xs text-[#1F6B49] mt-1">
-            Talk to your co-op about replanting options.
-          </div>
-        </section>
+        </Card>
 
         {/* Pack details */}
-        <details className="mt-6 text-xs text-[#666666]">
-          <summary className="cursor-pointer hover:text-[#1A1A1A]">
-            Pack details
-          </summary>
-          <dl className="mt-3 space-y-1 font-mono text-[11px]">
-            <Row label="Status" value={pack.status} />
-            <Row
-              label="Bundle cost"
-              value={formatRand(pack.bundleCost)}
-            />
-            <Row
-              label="Service fee"
-              value={formatRand(pack.serviceFee)}
-            />
-            <Row
-              label="Total repayment"
-              value={formatRand(pack.totalRepayment)}
-            />
-            <Row
-              label="Threshold"
-              value={`${pack.thresholdPercent}% of norm`}
-            />
-            <Row
-              label="Max payout"
-              value={formatRand(pack.maxPayout)}
-            />
-            <Row
-              label="Insurance payout"
-              value={formatRand(pack.insurancePayout)}
-            />
-          </dl>
-        </details>
+        <Card>
+          <CardHeader title="Pack details" label={pack.status} />
+          <DetailRow label="Bundle cost" value={formatRand(pack.bundleCost)} />
+          <DetailRow label="Service fee" value={formatRand(pack.serviceFee)} />
+          <DetailRow label="Total repayment" value={formatRand(pack.totalRepayment)} />
+          <DetailRow label="Threshold" value={`${pack.thresholdPercent}% of norm`} />
+          <DetailRow label="Max payout" value={formatRand(pack.maxPayout)} />
+          <DetailRow
+            label="Insurance payout"
+            value={formatRand(pack.insurancePayout)}
+            highlight
+          />
+          <DetailRow label="Pack" value={shortPackId(packId)} mono />
+        </Card>
       </div>
-    </main>
-  );
-}
 
-function NotFoundCard({ reason }: { reason: string }) {
-  return (
-    <main className="min-h-screen bg-[#F5F2EA] text-[#1A1A1A] p-4 md:p-8">
-      <div className="max-w-md mx-auto">
-        <Link
-          href="/dashboard"
-          className="text-xs text-[#666666] hover:text-[#1A1A1A]"
+      {/* Reassurance */}
+      <section
+        style={{
+          padding: 16,
+          borderRadius: 14,
+          background: "rgba(46, 125, 50, 0.10)",
+          border: "1px solid rgba(46, 125, 50, 0.35)",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: "rgba(255, 245, 230, 0.95)",
+          }}
         >
-          ← Dashboard
-        </Link>
-        <div className="mt-6 rounded-2xl bg-white border border-[#E5E0D5] p-6">
-          <h1 className="text-xl font-bold text-[#0B3D2E]">
-            Pack not found
-          </h1>
-          <p className="mt-2 text-sm text-[#666666]">{reason}</p>
+          Your Grow Pack is still active.
         </div>
+        <div
+          style={{
+            fontSize: 12,
+            color: "rgba(255, 230, 210, 0.72)",
+            marginTop: 4,
+          }}
+        >
+          Talk to your co-op about replanting options.
+        </div>
+      </section>
+    </Shell>
+  );
+}
+
+// ============================================================================
+//  Layout primitives — match the dashboard's dark-plum / coral-amber palette
+// ============================================================================
+
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <main
+      style={{
+        position: "relative",
+        minHeight: "100svh",
+        background: "#1a0f0c",
+        color: "rgba(255, 245, 230, 0.95)",
+        fontFamily: "var(--font-inter), Inter, system-ui, sans-serif",
+        padding: "20px 16px 32px",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          pointerEvents: "none",
+          position: "absolute",
+          top: -160,
+          left: -160,
+          width: 480,
+          height: 480,
+          borderRadius: "50%",
+          opacity: 0.28,
+          filter: "blur(120px)",
+          background: "radial-gradient(circle, #ff7b6b 0%, transparent 70%)",
+          zIndex: 0,
+        }}
+      />
+      <div
+        aria-hidden
+        style={{
+          pointerEvents: "none",
+          position: "absolute",
+          bottom: -200,
+          right: -180,
+          width: 560,
+          height: 560,
+          borderRadius: "50%",
+          opacity: 0.20,
+          filter: "blur(140px)",
+          background: "radial-gradient(circle, #ffb86b 0%, transparent 70%)",
+          zIndex: 0,
+        }}
+      />
+      <div style={{ position: "relative", zIndex: 1, maxWidth: 720, margin: "0 auto" }}>
+        {children}
       </div>
     </main>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Header({ packId, seasonId }: { packId: string; seasonId: number }) {
   return (
-    <div className="flex justify-between gap-4">
-      <dt className="text-[#A5A096]">{label}</dt>
-      <dd className="text-[#1A1A1A]">{value}</dd>
+    <header style={{ marginBottom: 18 }}>
+      <Link
+        href="/dashboard"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          fontSize: 11,
+          color: "rgba(255, 230, 210, 0.55)",
+          textDecoration: "none",
+        }}
+      >
+        <ArrowLeft size={14} />
+        Dashboard
+      </Link>
+      <h1
+        style={{
+          marginTop: 12,
+          fontSize: 22,
+          fontWeight: 800,
+          color: "rgba(255, 245, 230, 0.95)",
+          letterSpacing: "-0.3px",
+        }}
+      >
+        Drought protection
+      </h1>
+      <p
+        style={{
+          marginTop: 4,
+          fontSize: 11,
+          color: "rgba(255, 230, 210, 0.55)",
+          fontFamily: "var(--font-geist-mono), ui-monospace, monospace",
+        }}
+      >
+        Pack {shortPackId(packId)} · Season {seasonId}
+      </p>
+    </header>
+  );
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  return (
+    <section
+      style={{
+        padding: 18,
+        borderRadius: 16,
+        background: "rgba(255, 255, 255, 0.04)",
+        border: "1px solid rgba(255, 230, 210, 0.14)",
+        backdropFilter: "blur(8px)",
+      }}
+    >
+      {children}
+    </section>
+  );
+}
+
+function CardHeader({ title, label }: { title: string; label: string }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 12,
+      }}
+    >
+      <h2
+        style={{
+          fontSize: 13,
+          fontWeight: 800,
+          color: "rgba(255, 245, 230, 0.95)",
+          margin: 0,
+          letterSpacing: "-0.1px",
+        }}
+      >
+        {title}
+      </h2>
+      <span
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          color: "rgba(255, 230, 210, 0.55)",
+          letterSpacing: "0.12em",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </span>
     </div>
   );
 }
 
-function RainfallBarChart({
+function DetailRow({
+  label,
+  value,
+  highlight,
+  mono,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  mono?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "6px 0",
+        borderBottom: "1px solid rgba(255, 230, 210, 0.06)",
+        gap: 12,
+      }}
+    >
+      <span style={{ fontSize: 12, color: "rgba(255, 230, 210, 0.55)" }}>
+        {label}
+      </span>
+      <span
+        style={{
+          fontSize: highlight ? 14 : 13,
+          fontWeight: highlight ? 800 : 600,
+          color: highlight ? "#ffb86b" : "rgba(255, 245, 230, 0.92)",
+          fontVariantNumeric: "tabular-nums",
+          fontFamily: mono
+            ? "var(--font-geist-mono), ui-monospace, monospace"
+            : "inherit",
+          textAlign: "right",
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function RainfallBars({
   rainfallPercent,
   thresholdPercent,
 }: {
   rainfallPercent: number;
   thresholdPercent: number;
 }) {
-  // Six synthetic week buckets. We don't have weekly data on-chain — the
-  // chain only stores the season aggregate — so each bar is a smoothed
-  // segment of the cumulative rainfall, distributed roughly evenly. This
-  // matches the *visual* of the mockup; once we have a per-week oracle
-  // feed off-chain, we can replace this with real per-week values.
   const weeks = 6;
-  const barFraction = rainfallPercent / weeks; // each bar is 1/6 of total
-  const bars = Array.from({ length: weeks }, (_, i) => ({
-    label: `W${i + 1}`,
-    value: barFraction,
-  }));
-
-  const max = 30; // visual ceiling, in % units
-  const thresholdY = thresholdPercent / weeks; // dashed line position
+  const barFraction = rainfallPercent / weeks;
+  const max = 30;
+  const thresholdY = thresholdPercent / weeks;
   return (
-    <div className="mt-5 relative h-24 flex items-end gap-2 pl-1 pr-8">
-      {/* threshold dashed line */}
+    <div
+      style={{
+        position: "relative",
+        height: 92,
+        display: "flex",
+        alignItems: "flex-end",
+        gap: 10,
+        padding: "0 28px 0 4px",
+        marginTop: 4,
+      }}
+    >
       <div
         aria-hidden
-        className="absolute left-1 right-8 border-t-2 border-dashed border-[#C0392B]"
-        style={{ bottom: `${(thresholdY / max) * 100}%` }}
+        style={{
+          position: "absolute",
+          left: 4,
+          right: 28,
+          bottom: `${(thresholdY / max) * 100}%`,
+          borderTop: "2px dashed #C0392B",
+        }}
       />
       <span
         aria-hidden
-        className="absolute right-0 text-[9px] font-bold text-[#C0392B]"
-        style={{ bottom: `${(thresholdY / max) * 100}%`, transform: "translateY(-50%)" }}
+        style={{
+          position: "absolute",
+          right: 0,
+          bottom: `${(thresholdY / max) * 100}%`,
+          transform: "translateY(-50%)",
+          fontSize: 9,
+          fontWeight: 800,
+          color: "#C0392B",
+          letterSpacing: "0.06em",
+        }}
       >
         min
       </span>
-      {bars.map((b, i) => {
-        const heightPct = Math.min(100, (b.value / max) * 100);
-        const belowThreshold = b.value < thresholdY;
+      {Array.from({ length: weeks }).map((_, i) => {
+        const heightPct = Math.min(100, (barFraction / max) * 100);
+        const belowThreshold = barFraction < thresholdY;
         return (
           <div
-            key={b.label}
-            className="flex-1 flex flex-col items-center justify-end h-full"
+            key={i}
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              height: "100%",
+            }}
           >
             <div
-              className="w-full rounded-sm"
               style={{
+                width: "100%",
+                marginTop: "auto",
                 height: `${heightPct}%`,
-                backgroundColor: belowThreshold ? "#E67E22" : "#2E7D32",
+                borderRadius: 3,
+                background: belowThreshold ? "#E67E22" : "#2E7D32",
+                boxShadow: belowThreshold
+                  ? "0 0 12px rgba(230, 126, 34, 0.35)"
+                  : "none",
               }}
             />
-            <div className="text-[10px] text-[#A5A096] mt-1">{b.label}</div>
+            <div
+              style={{
+                fontSize: 9,
+                color: "rgba(255, 230, 210, 0.4)",
+                marginTop: 4,
+              }}
+            >
+              W{i + 1}
+            </div>
           </div>
         );
       })}
@@ -280,7 +505,45 @@ function RainfallBarChart({
   );
 }
 
-function shortAddress(addr: string): string {
-  if (addr.length <= 10) return addr;
-  return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
+function NotFoundShell({ reason }: { reason: string }) {
+  return (
+    <Shell>
+      <Link
+        href="/dashboard"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          fontSize: 11,
+          color: "rgba(255, 230, 210, 0.55)",
+          textDecoration: "none",
+        }}
+      >
+        <ArrowLeft size={14} />
+        Dashboard
+      </Link>
+      <Card>
+        <h1
+          style={{
+            fontSize: 18,
+            fontWeight: 800,
+            color: "rgba(255, 245, 230, 0.95)",
+            marginTop: 4,
+          }}
+        >
+          Pack not found
+        </h1>
+        <p
+          style={{
+            marginTop: 6,
+            fontSize: 12,
+            color: "rgba(255, 230, 210, 0.55)",
+            lineHeight: 1.5,
+          }}
+        >
+          {reason}
+        </p>
+      </Card>
+    </Shell>
+  );
 }
