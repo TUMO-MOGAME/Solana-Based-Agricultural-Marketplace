@@ -57,7 +57,12 @@ import {
   fetchDeal,
   makeCreateDealIx,
   makeConfirmAndReleaseIx,
+  farmerIdHashFrom,
+  farmerPda,
+  packPda,
+  fetchGrowPack,
   type Deal,
+  type GrowPack,
 } from "@/lib/vuna/program";
 import {
   readDemoDeals,
@@ -92,18 +97,15 @@ type BuyerOffer = {
   byMonth: string;
 };
 
-type FarmerListing = {
-  id: string;
-  crop: Crop;
-  region: string;
-  quantityTons: number;
-  askingPricePerTonZAR: number;
-  harvestMonth: string;
-  status: "Open" | "Matched" | "Delivered";
-  matchedBuyer?: string;
-};
-
-// ─── Mock data — replace with on-chain reads in Phase 2 ───────────────
+// ─── Indicative buyer offers ──────────────────────────────────────────
+//
+// These represent the kind of partner buyers (mills, retailers,
+// brewers, co-ops) we'll onboard for the H1 2027 pilot. Pricing
+// reflects SAGIS / DAFF spot averages from late 2024 / early 2025.
+//
+// In Phase 3 these will be replaced by `BuyerOffer` PDAs that real
+// buyers post on-chain. The Match modal already creates real on-chain
+// Deal PDAs from these rows — only the *offer source* is curated.
 const BUYER_OFFERS: BuyerOffer[] = [
   {
     id: "lebone-maize-ec",
@@ -173,27 +175,9 @@ const BUYER_OFFERS: BuyerOffer[] = [
   },
 ];
 
-const FARMER_LISTINGS: FarmerListing[] = [
-  {
-    id: "demo-maize-1",
-    crop: "Maize",
-    region: "Eastern Cape",
-    quantityTons: 2.5,
-    askingPricePerTonZAR: 5300,
-    harvestMonth: "Oct 2026",
-    status: "Open",
-  },
-  {
-    id: "demo-sorghum-1",
-    crop: "Sorghum",
-    region: "Eastern Cape",
-    quantityTons: 1.0,
-    askingPricePerTonZAR: 4900,
-    harvestMonth: "Aug 2026",
-    status: "Matched",
-    matchedBuyer: "Western Cape Brewers",
-  },
-];
+// "Your harvest listings" used to be hardcoded mock data. It now reads
+// the connected farmer's on-chain Grow Packs across the last 3 seasons
+// — see <FarmerHarvests /> below.
 
 const CROP_FILTERS: Array<"All" | Crop> = [
   "All",
@@ -476,23 +460,11 @@ export function MarketplaceTab() {
               fontWeight: 700,
             }}
           >
-            Your harvest listings
+            Your pending harvests
           </span>
         </div>
 
-        {!publicKey ? (
-          <div className={styles.box}>
-            <div className={styles.boxBody}>
-              <span style={{ fontSize: 13, color: "rgba(255, 230, 210, 0.72)" }}>
-                Connect your wallet to list your harvest for direct buyers.
-              </span>
-            </div>
-          </div>
-        ) : (
-          FARMER_LISTINGS.map((listing) => (
-            <FarmerListingCard key={listing.id} listing={listing} />
-          ))
-        )}
+        <FarmerHarvests />
       </div>
 
       {/* Footnote */}
@@ -503,10 +475,14 @@ export function MarketplaceTab() {
           padding: "4px 6px",
           textAlign: "center",
           letterSpacing: "0.04em",
+          lineHeight: 1.55,
         }}
       >
-        Prices are illustrative — based on SAGIS &amp; DAFF spot averages.
-        Direct settlement coming soon.
+        Buyer offers shown above are indicative pilot pricing — SAGIS / DAFF
+        spot averages, late 2024 / early 2025. Real buyers will post offers
+        on-chain in Phase 3. <strong>Match Buyer locks real funds on devnet</strong>{" "}
+        via the Phase 2 escrow program; pending harvests below read your{" "}
+        <strong>real on-chain Grow Packs</strong>.
       </div>
 
       {/* Match modal — Phase 2: signs a real create_deal tx on devnet */}
@@ -681,11 +657,162 @@ function BuyerOfferCard({
   );
 }
 
-function FarmerListingCard({ listing }: { listing: FarmerListing }) {
+// ============================================================================
+//  Farmer harvests — derived from the connected farmer's on-chain Grow Packs
+// ============================================================================
+//
+// "Your pending harvests" reads the connected wallet's Grow Packs across
+// the last 3 seasons (same lookback window as the History tab) and shows
+// the ones with status Approved / Active / Disbursed — i.e. the farmer
+// has a pack but hasn't sold the harvest yet, so it's matchable against
+// a buyer offer.
+//
+// Settled packs (Repaid / InsurancePaid / Defaulted) are intentionally
+// hidden here — those harvests are no longer available for sale.
+
+const HARVEST_LOOKBACK_SEASONS = 3;
+
+type HarvestRow = {
+  season: number;
+  packAddress: string;
+  pack: GrowPack;
+};
+
+function FarmerHarvests() {
+  const { publicKey } = useWallet();
+  const { connection } = useConnection();
+  const [rows, setRows] = useState<HarvestRow[]>([]);
+  const [state, setState] = useState<"loading" | "ready" | "no-wallet" | "empty" | "error">(
+    "loading",
+  );
+  const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => {
+    if (!publicKey) {
+      setState("no-wallet");
+      setRows([]);
+      return;
+    }
+    let cancelled = false;
+    setState("loading");
+    (async () => {
+      try {
+        const farmerIdHash = await farmerIdHashFrom(publicKey.toBase58());
+        const [farmerAcc] = farmerPda(publicKey, farmerIdHash);
+        const currentYear = new Date().getFullYear();
+        const seasons = Array.from(
+          { length: HARVEST_LOOKBACK_SEASONS },
+          (_, i) => currentYear - i,
+        );
+        const fetched = await Promise.all(
+          seasons.map(async (season) => {
+            const [packAcc] = packPda(farmerAcc, season);
+            const data = await fetchGrowPack(connection, packAcc);
+            return { season, packAddress: packAcc.toBase58(), data };
+          }),
+        );
+        if (cancelled) return;
+        // Only show packs whose harvest is still ahead — Approved (just
+        // approved by co-op), Active (insurance live, harvest coming),
+        // Disbursed (inputs delivered). Settled packs are excluded.
+        const matchable: HarvestRow[] = fetched
+          .filter(
+            (r): r is { season: number; packAddress: string; data: GrowPack } =>
+              r.data !== null,
+          )
+          .filter(({ data }) =>
+            data.status === "Approved" ||
+            data.status === "Active" ||
+            data.status === "Requested",
+          )
+          .map(({ season, packAddress, data }) => ({
+            season,
+            packAddress,
+            pack: data,
+          }));
+        setRows(matchable);
+        setState(matchable.length > 0 ? "ready" : "empty");
+      } catch (e) {
+        if (cancelled) return;
+        setErrorMsg(e instanceof Error ? e.message : String(e));
+        setState("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [publicKey, connection]);
+
+  if (state === "no-wallet") {
+    return (
+      <div className={styles.box}>
+        <div className={styles.boxBody}>
+          <span style={{ fontSize: 13, color: "rgba(255, 230, 210, 0.72)" }}>
+            Connect your wallet to see harvests you can list for direct buyers.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === "loading") {
+    return (
+      <div className={styles.box}>
+        <div
+          className={styles.boxBody}
+          style={{ textAlign: "center", padding: 24 }}
+        >
+          <span style={{ fontSize: 12, color: "rgba(255, 230, 210, 0.55)" }}>
+            Reading your Grow Packs from devnet…
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === "error") {
+    return (
+      <div className={styles.box}>
+        <div className={styles.boxBody}>
+          <span style={{ fontSize: 12, color: "#ffb0a3" }}>
+            Couldn&apos;t reach the chain — {errorMsg}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (state === "empty") {
+    return (
+      <div className={styles.box}>
+        <div className={styles.boxBody}>
+          <span style={{ fontSize: 13, color: "rgba(255, 230, 210, 0.72)" }}>
+            No pending harvests yet. Open the <strong>Apply</strong> tab to
+            request a Grow Pack — once approved, this is where it shows up.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {rows.map((row) => (
+        <HarvestCard key={row.packAddress} row={row} />
+      ))}
+    </>
+  );
+}
+
+function HarvestCard({ row }: { row: HarvestRow }) {
+  const { season, packAddress, pack } = row;
+  const totalRepayment = Number(pack.totalRepayment);
+  const bundleCost = Number(pack.bundleCost);
+
   const statusColor =
-    listing.status === "Matched"
+    pack.status === "Active"
       ? "#7adf7d"
-      : listing.status === "Delivered"
+      : pack.status === "Approved"
       ? "#ffb86b"
       : "rgba(255, 230, 210, 0.55)";
 
@@ -710,7 +837,7 @@ function FarmerListingCard({ listing }: { listing: FarmerListing }) {
                 marginBottom: 4,
               }}
             >
-              {listing.quantityTons} tons {listing.crop}
+              Pending harvest · Season {season}
             </div>
             <div
               style={{
@@ -721,11 +848,16 @@ function FarmerListingCard({ listing }: { listing: FarmerListing }) {
                 color: "rgba(255, 230, 210, 0.55)",
               }}
             >
-              <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
-                <MapPin size={10} /> {listing.region}
+              <span
+                style={{
+                  fontFamily:
+                    "var(--font-geist-mono), ui-monospace, monospace",
+                }}
+              >
+                {shortAddr(packAddress)}
               </span>
               <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
-                <CalendarDays size={10} /> harvest {listing.harvestMonth}
+                <CalendarDays size={10} /> harvest {season}
               </span>
             </div>
           </div>
@@ -743,7 +875,7 @@ function FarmerListingCard({ listing }: { listing: FarmerListing }) {
               flexShrink: 0,
             }}
           >
-            {listing.status}
+            {pack.status}
           </span>
         </div>
 
@@ -757,28 +889,35 @@ function FarmerListingCard({ listing }: { listing: FarmerListing }) {
         >
           <span
             style={{
-              fontSize: 18,
+              fontSize: 16,
               fontWeight: 800,
               color: "rgba(255, 245, 230, 0.95)",
               fontVariantNumeric: "tabular-nums",
             }}
           >
-            Asking {formatRandPerTon(listing.askingPricePerTonZAR)}
+            R {ZAR.format(bundleCost)} bundle
           </span>
-          {listing.matchedBuyer ? (
-            <span
-              style={{
-                fontSize: 11,
-                color: "rgba(255, 230, 210, 0.72)",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
-              <CheckCircle2 size={11} style={{ color: "#7adf7d" }} />
-              {listing.matchedBuyer}
-            </span>
-          ) : null}
+          <span
+            style={{
+              fontSize: 11,
+              color: "rgba(255, 230, 210, 0.55)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            · repay R {ZAR.format(totalRepayment)} at harvest
+          </span>
+        </div>
+
+        <div
+          style={{
+            marginTop: 10,
+            fontSize: 11,
+            color: "rgba(255, 230, 210, 0.55)",
+            lineHeight: 1.5,
+          }}
+        >
+          A buyer who matches this harvest pays direct, settling at harvest
+          and clearing your loan automatically.
         </div>
       </div>
     </div>
