@@ -24,6 +24,7 @@ export const PROGRAM_ID = new PublicKey(
 // PDA seed prefixes — must match constants.rs
 const FARMER_SEED = Buffer.from("farmer");
 const GROW_PACK_SEED = Buffer.from("pack");
+const DEAL_SEED = Buffer.from("deal");
 
 // ============================================================================
 //  Connection
@@ -63,6 +64,23 @@ export function packPda(
   seasonBuf.writeUInt32LE(seasonId, 0);
   return PublicKey.findProgramAddressSync(
     [GROW_PACK_SEED, farmer.toBuffer(), seasonBuf],
+    PROGRAM_ID,
+  );
+}
+
+/**
+ * Derive the Deal PDA for (buyer, farmer, deal_id). Marketplace escrow.
+ * Mirrors the seed list in `programs/vuna/programs/vuna/src/instructions/create_deal.rs`.
+ */
+export function dealPda(
+  buyer: PublicKey,
+  farmer: PublicKey,
+  dealId: bigint,
+): [PublicKey, number] {
+  const idBuf = Buffer.alloc(8);
+  idBuf.writeBigUInt64LE(dealId, 0);
+  return PublicKey.findProgramAddressSync(
+    [DEAL_SEED, buyer.toBuffer(), farmer.toBuffer(), idBuf],
     PROGRAM_ID,
   );
 }
@@ -303,7 +321,13 @@ const DISCRIMINATORS = {
   disburse_grow_pack: new Uint8Array([102, 96, 218, 179, 117, 153, 65, 190]),
   trigger_insurance_payout: new Uint8Array([6, 141, 36, 41, 176, 33, 10, 82]),
   settle_repayment: new Uint8Array([129, 198, 176, 67, 69, 207, 220, 178]),
+  // Marketplace (Phase 2)
+  create_deal: new Uint8Array([198, 212, 144, 151, 97, 56, 149, 113]),
+  confirm_and_release: new Uint8Array([136, 35, 54, 211, 241, 17, 40, 188]),
 } as const;
+
+/** Anchor account-discriminator for the Deal account type. */
+const DEAL_ACCOUNT_DISC = new Uint8Array([125, 223, 160, 234, 71, 162, 182, 219]);
 
 /** Default service-fee bps (10%) — matches `core/grow-pack.ts`. */
 export const SERVICE_FEE_BPS_DEFAULT = 1000;
@@ -406,6 +430,110 @@ export function makeRequestGrowPackIx(
       { pubkey: farmer, isSigner: false, isWritable: false },
       { pubkey: args.cooperative, isSigner: true, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from(data),
+  });
+}
+
+// ============================================================================
+//  Marketplace — Deal account + create_deal + confirm_and_release
+//
+//  Mirrors the Rust definition in
+//  programs/vuna/programs/vuna/src/state.rs::Deal and the two instruction
+//  modules at instructions/{create_deal,confirm_and_release}.rs
+// ============================================================================
+
+export interface Deal {
+  buyer: PublicKey;
+  farmer: PublicKey;
+  dealId: bigint;
+  amountLamports: bigint;
+  createdAt: bigint;
+  bump: number;
+}
+
+/** Borsh layout: 32 + 32 + 8 + 8 + 8 + 1 = 89 bytes (after the 8-byte disc). */
+export function decodeDeal(data: Uint8Array): Deal {
+  if (data.length < 8 + 89) {
+    throw new Error(`Deal account too small: ${data.length} bytes`);
+  }
+  for (let i = 0; i < 8; i++) {
+    if (data[i] !== DEAL_ACCOUNT_DISC[i]) {
+      throw new Error("Deal: account-discriminator mismatch");
+    }
+  }
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  let o = 8;
+  const buyer = new PublicKey(data.slice(o, o + 32)); o += 32;
+  const farmer = new PublicKey(data.slice(o, o + 32)); o += 32;
+  const dealId = dv.getBigUint64(o, true); o += 8;
+  const amountLamports = dv.getBigUint64(o, true); o += 8;
+  const createdAt = dv.getBigInt64(o, true); o += 8;
+  const bump = dv.getUint8(o);
+  return { buyer, farmer, dealId, amountLamports, createdAt, bump };
+}
+
+export async function fetchDeal(
+  connection: Connection,
+  deal: PublicKey,
+): Promise<Deal | null> {
+  const info = await connection.getAccountInfo(deal);
+  if (!info) return null;
+  return decodeDeal(info.data);
+}
+
+// ---- create_deal ------------------------------------------------------------
+
+export interface CreateDealArgs {
+  buyer: PublicKey;
+  farmer: PublicKey;
+  dealId: bigint;
+  amountLamports: bigint;
+}
+
+export function makeCreateDealIx(args: CreateDealArgs): TransactionInstruction {
+  const [deal] = dealPda(args.buyer, args.farmer, args.dealId);
+
+  // disc(8) + deal_id(u64=8) + amount_lamports(u64=8) = 24 bytes
+  const data = new Uint8Array(24);
+  const dv = new DataView(data.buffer);
+  data.set(DISCRIMINATORS.create_deal, 0);
+  dv.setBigUint64(8, args.dealId, true);
+  dv.setBigUint64(16, args.amountLamports, true);
+
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: deal, isSigner: false, isWritable: true },
+      { pubkey: args.buyer, isSigner: true, isWritable: true },
+      { pubkey: args.farmer, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from(data),
+  });
+}
+
+// ---- confirm_and_release ----------------------------------------------------
+
+export interface ConfirmAndReleaseArgs {
+  /** PDA of the deal being confirmed. */
+  deal: PublicKey;
+  /** The farmer wallet — must sign and receives the released lamports. */
+  farmer: PublicKey;
+}
+
+export function makeConfirmAndReleaseIx(
+  args: ConfirmAndReleaseArgs,
+): TransactionInstruction {
+  // disc(8) + no args = 8 bytes
+  const data = new Uint8Array(8);
+  data.set(DISCRIMINATORS.confirm_and_release, 0);
+
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: args.deal, isSigner: false, isWritable: true },
+      { pubkey: args.farmer, isSigner: true, isWritable: true },
     ],
     data: Buffer.from(data),
   });

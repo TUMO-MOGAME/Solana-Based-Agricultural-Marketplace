@@ -341,6 +341,40 @@ impl GrowPack {
 }
 
 // ============================================================================
+//  Marketplace — Deal account (Phase 2 escrow)
+// ============================================================================
+//
+// A Deal locks lamports from a buyer that release to a farmer when the
+// farmer confirms delivery. PDA seeds:
+//
+//     ["deal", buyer, farmer, deal_id_le_bytes]
+//
+// Multiple concurrent deals between the same buyer/farmer are
+// supported by varying `deal_id`.
+//
+// In production the cooperative — not the farmer — confirms delivery.
+// For the hackathon demo this constraint is relaxed (the farmer signs
+// `confirm_and_release` themselves). The instruction is documented in
+// `instructions/confirm_and_release.rs`.
+
+#[account]
+#[derive(InitSpace)]
+pub struct Deal {
+    /// Buyer who locked the funds. Pays for PDA rent.
+    pub buyer: Pubkey,
+    /// Farmer who receives the lamports on delivery confirmation.
+    pub farmer: Pubkey,
+    /// Caller-chosen deal id, allowing multiple concurrent deals.
+    pub deal_id: u64,
+    /// Locked amount in lamports. Released to `farmer` on confirmation.
+    pub amount_lamports: u64,
+    /// Unix timestamp at creation, sourced from `Clock`.
+    pub created_at: i64,
+    /// PDA bump.
+    pub bump: u8,
+}
+
+// ============================================================================
 //  Tests for FarmerAccount credit-score logic.
 //  Mirrors tests/unit/credit-score.test.ts one-for-one.
 // ============================================================================

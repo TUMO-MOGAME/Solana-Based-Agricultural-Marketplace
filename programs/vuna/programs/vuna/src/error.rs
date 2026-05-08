@@ -28,4 +28,11 @@ pub enum VunaError {
 
     #[msg("Numeric overflow in pricing or score calculation")]
     NumericOverflow,
+
+    // ---- Marketplace (Phase 2 — Deal escrow) ----
+    #[msg("Deal amount must be greater than zero")]
+    InvalidDealAmount,
+
+    #[msg("Buyer and farmer must be different accounts")]
+    SelfDeal,
 }

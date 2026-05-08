@@ -2,21 +2,35 @@
 
 // <MarketplaceTab /> — direct buyer ↔ farmer produce marketplace.
 //
-// Phase 1 (this file): pure-frontend MVP with mock listings, designed
-// to demo the "skip the middleman" pitch from CLAUDE.md §3 (middlemen
-// capture 40-60% of crop value). Each buyer offer shows the *direct*
-// price plus an explicit "+ X% vs typical buy-back" badge, which is
-// the headline number that justifies the whole product.
+// Phase 1 (the listings UI): mock buyer offers + farmer listings,
+// surfacing the "+ X% vs middleman" pitch from CLAUDE.md §3. The
+// numbers are illustrative SAGIS/DAFF spot averages.
 //
-// Phase 2 (later): on-chain escrow program. Buyer locks funds when
-// they match. Funds release on co-op-confirmed delivery. Out of scope
-// for the hackathon demo — match buttons currently open a modal that
-// explains what *would* happen.
+// Phase 2 (the on-chain escrow): the **Match buyer** modal now signs
+// a real `create_deal` transaction that locks lamports into a Deal
+// PDA on devnet. The receiving farmer wallet then signs
+// `confirm_and_release` to close the PDA and pull the lamports.
+// The amount is 0.01 SOL displayed as "≈ R 10" — devnet has no real
+// stablecoin, so we use lamports as a stand-in.
 //
-// Hide-the-chain rule (CLAUDE.md §7) — this UI talks Rand, tons,
-// harvest dates. Never blockchain, never USDC, never wallet.
+// Demo flow:
+//   1. Connect as the BUYER wallet, click Match buyer, paste your
+//      other wallet's address as farmer, sign → SOL locked on-chain.
+//   2. Switch wallets to FARMER in Phantom — the dashboard reconnects
+//      and the deal shows up under "Active deals".
+//   3. Click "Confirm delivery" → sign → SOL flows to FARMER.
+//
+// In production, the cooperative — not the farmer — confirms delivery,
+// and the locked unit is a ZAR-stablecoin not SOL. The simplifications
+// are documented in the on-chain instruction handlers and on the
+// PDF-presentation Phase 2 page.
+//
+// Hide-the-chain rule (CLAUDE.md §7) — Rand and harvest dates in the
+// pitch UI. The Phase 2 demo section says "≈ R 10" but reveals that
+// it's lamports for the demo, since this is a developer-facing flow,
+// not the farmer-facing surface.
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Sprout,
   MapPin,
@@ -26,9 +40,39 @@ import {
   TrendingUp,
   X,
   CheckCircle2,
+  Loader2,
+  ShieldCheck,
 } from "lucide-react";
-import { useWallet } from "@solana/wallet-adapter-react";
+import {
+  useConnection,
+  useWallet,
+} from "@solana/wallet-adapter-react";
+import {
+  PublicKey,
+  Transaction,
+  LAMPORTS_PER_SOL,
+} from "@solana/web3.js";
+import {
+  dealPda,
+  fetchDeal,
+  makeCreateDealIx,
+  makeConfirmAndReleaseIx,
+  type Deal,
+} from "@/lib/vuna/program";
+import {
+  readDemoDeals,
+  addDemoDeal,
+  removeDemoDeal,
+  randomDealId,
+  type DemoDeal,
+} from "@/lib/vuna/demo-deals";
 import styles from "./dashboard.module.css";
+
+// 0.01 SOL is what the demo locks per match. Displayed as "≈ R 10" —
+// Rand-pegged stablecoins live on a different chain or aren't on
+// devnet, so we use lamports as a realistic stand-in.
+const DEMO_LAMPORTS = BigInt(Math.round(0.01 * LAMPORTS_PER_SOL));
+const DEMO_RAND_LABEL = "R 10";
 
 type Crop = "Maize" | "Wheat" | "Soybean" | "Sorghum" | "Beans";
 
@@ -171,15 +215,93 @@ function pctSavings(direct: number, middleman: number): number {
   return Math.round(((direct - middleman) / middleman) * 100);
 }
 
+type ActiveDeal = {
+  cached: DemoDeal;
+  /** Truthy on-chain state if the PDA still exists; null after release. */
+  onChain: Deal | null;
+};
+
 export function MarketplaceTab() {
-  const { publicKey } = useWallet();
+  const { publicKey, sendTransaction } = useWallet();
+  const { connection } = useConnection();
   const [cropFilter, setCropFilter] = useState<"All" | Crop>("All");
   const [matchTarget, setMatchTarget] = useState<BuyerOffer | null>(null);
+  const [deals, setDeals] = useState<ActiveDeal[]>([]);
+  const [dealsRefreshKey, setDealsRefreshKey] = useState(0);
 
   const filteredOffers = useMemo(() => {
     if (cropFilter === "All") return BUYER_OFFERS;
     return BUYER_OFFERS.filter((o) => o.crop === cropFilter);
   }, [cropFilter]);
+
+  // Load deals from localStorage and check each one against the chain.
+  // Re-run whenever the wallet changes, or when something updates the
+  // refresh key (e.g. after a successful match or release).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const cached = readDemoDeals();
+      const enriched = await Promise.all(
+        cached.map(async (d) => {
+          try {
+            const onChain = await fetchDeal(connection, new PublicKey(d.pda));
+            return { cached: d, onChain };
+          } catch {
+            return { cached: d, onChain: null };
+          }
+        }),
+      );
+      if (!cancelled) setDeals(enriched);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [connection, publicKey, dealsRefreshKey]);
+
+  const refreshDeals = useCallback(() => {
+    setDealsRefreshKey((k) => k + 1);
+  }, []);
+
+  // Filter to deals where this wallet is buyer or farmer. Released
+  // deals (PDA closed on-chain) still surface so users can see history.
+  const myDeals = useMemo(() => {
+    if (!publicKey) return [];
+    const me = publicKey.toBase58();
+    return deals.filter(
+      ({ cached }) => cached.buyer === me || cached.farmer === me,
+    );
+  }, [deals, publicKey]);
+
+  // Called by the match modal once create_deal is confirmed on-chain.
+  const handleMatchSuccess = useCallback(
+    (deal: DemoDeal) => {
+      addDemoDeal(deal);
+      refreshDeals();
+      setMatchTarget(null);
+    },
+    [refreshDeals],
+  );
+
+  // Farmer side — sign confirm_and_release. Returns the tx signature.
+  const handleConfirmDeal = useCallback(
+    async (active: ActiveDeal) => {
+      if (!publicKey || !sendTransaction) {
+        throw new Error("Connect a wallet first.");
+      }
+      const ix = makeConfirmAndReleaseIx({
+        deal: new PublicKey(active.cached.pda),
+        farmer: publicKey,
+      });
+      const tx = new Transaction().add(ix);
+      const sig = await sendTransaction(tx, connection);
+      await connection.confirmTransaction(sig, "confirmed");
+      // PDA is now closed on-chain — drop from the local list.
+      removeDemoDeal(active.cached.pda);
+      refreshDeals();
+      return sig;
+    },
+    [publicKey, sendTransaction, connection, refreshDeals],
+  );
 
   // The headline pitch — average savings across visible offers, in
   // percent, vs. middleman buy-back. This is the demo's "wow" number.
@@ -300,6 +422,41 @@ export function MarketplaceTab() {
         )}
       </div>
 
+      {/* Phase 2 — active on-chain deals for the connected wallet */}
+      {publicKey && myDeals.length > 0 ? (
+        <div style={{ display: "grid", gap: 12, marginTop: 8 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "0 4px",
+            }}
+          >
+            <ShieldCheck size={12} style={{ color: "#7adf7d" }} />
+            <span
+              style={{
+                fontSize: 11,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: "rgba(255, 230, 210, 0.55)",
+                fontWeight: 700,
+              }}
+            >
+              Active deals (live on devnet)
+            </span>
+          </div>
+          {myDeals.map((d) => (
+            <ActiveDealCard
+              key={d.cached.pda}
+              active={d}
+              myWallet={publicKey.toBase58()}
+              onConfirm={() => handleConfirmDeal(d)}
+            />
+          ))}
+        </div>
+      ) : null}
+
       {/* Farmer's own listings */}
       <div style={{ display: "grid", gap: 12, marginTop: 8 }}>
         <div
@@ -352,9 +509,13 @@ export function MarketplaceTab() {
         Direct settlement coming soon.
       </div>
 
-      {/* Match modal */}
+      {/* Match modal — Phase 2: signs a real create_deal tx on devnet */}
       {matchTarget ? (
-        <MatchModal offer={matchTarget} onClose={() => setMatchTarget(null)} />
+        <MatchModal
+          offer={matchTarget}
+          onClose={() => setMatchTarget(null)}
+          onMatched={handleMatchSuccess}
+        />
       ) : null}
     </div>
   );
@@ -625,24 +786,104 @@ function FarmerListingCard({ listing }: { listing: FarmerListing }) {
 }
 
 // ============================================================================
-//  Match modal — Phase 2 placeholder
+//  Match modal — Phase 2: signs a real create_deal tx on devnet
 // ============================================================================
+//
+// The modal asks the buyer (the connected wallet) for the farmer's
+// pubkey. On submit, it builds a `create_deal` instruction that locks
+// DEMO_LAMPORTS into a Deal PDA seeded by (buyer, farmer, dealId).
+// On success, the deal is added to the localStorage cache so the
+// receiving wallet (when the user switches in Phantom) sees it under
+// "Active deals".
+
+type MatchState =
+  | { kind: "idle" }
+  | { kind: "busy" }
+  | { kind: "success"; signature: string; pda: string }
+  | { kind: "error"; message: string };
 
 function MatchModal({
   offer,
   onClose,
+  onMatched,
 }: {
   offer: BuyerOffer;
   onClose: () => void;
+  onMatched: (deal: DemoDeal) => void;
 }) {
+  const { publicKey, sendTransaction } = useWallet();
+  const { connection } = useConnection();
+  const [farmerInput, setFarmerInput] = useState("");
+  const [state, setState] = useState<MatchState>({ kind: "idle" });
+
   const savingsPerTon = offer.pricePerTonZAR - offer.middlemanPriceZAR;
+
+  const handleSubmit = async () => {
+    if (!publicKey || !sendTransaction) {
+      setState({ kind: "error", message: "Connect a wallet first." });
+      return;
+    }
+    let farmer: PublicKey;
+    try {
+      farmer = new PublicKey(farmerInput.trim());
+    } catch {
+      setState({
+        kind: "error",
+        message: "That farmer address isn't a valid Solana wallet.",
+      });
+      return;
+    }
+    if (farmer.equals(publicKey)) {
+      setState({
+        kind: "error",
+        message:
+          "Farmer wallet must be different from the buyer (your connected wallet).",
+      });
+      return;
+    }
+
+    setState({ kind: "busy" });
+    const dealIdStr = randomDealId();
+    const dealId = BigInt(dealIdStr);
+    const [pda] = dealPda(publicKey, farmer, dealId);
+
+    try {
+      const ix = makeCreateDealIx({
+        buyer: publicKey,
+        farmer,
+        dealId,
+        amountLamports: DEMO_LAMPORTS,
+      });
+      const tx = new Transaction().add(ix);
+      const sig = await sendTransaction(tx, connection);
+      await connection.confirmTransaction(sig, "confirmed");
+
+      const stored: DemoDeal = {
+        pda: pda.toBase58(),
+        buyer: publicKey.toBase58(),
+        farmer: farmer.toBase58(),
+        dealId: dealIdStr,
+        amountLamports: DEMO_LAMPORTS.toString(),
+        createdAtMs: Date.now(),
+        buyerOfferLabel: `${offer.buyer} · ${offer.crop}`,
+        createSignature: sig,
+      };
+      onMatched(stored);
+      setState({ kind: "success", signature: sig, pda: pda.toBase58() });
+    } catch (e) {
+      setState({
+        kind: "error",
+        message: e instanceof Error ? e.message : "Transaction failed.",
+      });
+    }
+  };
 
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label={`Match with ${offer.buyer}`}
-      onClick={onClose}
+      onClick={state.kind === "busy" ? undefined : onClose}
       style={{
         position: "fixed",
         inset: 0,
@@ -657,7 +898,7 @@ function MatchModal({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          maxWidth: 440,
+          maxWidth: 460,
           width: "100%",
           background: "#1a0f0c",
           borderRadius: 18,
@@ -671,6 +912,7 @@ function MatchModal({
         <button
           type="button"
           onClick={onClose}
+          disabled={state.kind === "busy"}
           aria-label="Close"
           style={{
             position: "absolute",
@@ -682,7 +924,8 @@ function MatchModal({
             background: "rgba(255, 255, 255, 0.06)",
             border: "1px solid rgba(255, 230, 210, 0.14)",
             color: "rgba(255, 230, 210, 0.72)",
-            cursor: "pointer",
+            cursor: state.kind === "busy" ? "wait" : "pointer",
+            opacity: state.kind === "busy" ? 0.4 : 1,
             display: "grid",
             placeItems: "center",
           }}
@@ -700,93 +943,483 @@ function MatchModal({
             marginBottom: 8,
           }}
         >
-          Match preview
+          {state.kind === "success" ? "Funds locked" : "Match buyer"}
         </div>
-        <h3
-          style={{
-            fontSize: 18,
-            fontWeight: 800,
-            margin: "0 0 6px",
-          }}
-        >
+        <h3 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 6px" }}>
           {offer.buyer} · {offer.crop}
         </h3>
-        <p
-          style={{
-            fontSize: 13,
-            color: "rgba(255, 230, 210, 0.72)",
-            lineHeight: 1.5,
-            marginTop: 10,
-          }}
-        >
-          When you match this buyer, the deal will be locked in:
-        </p>
-        <ul
-          style={{
-            listStyle: "none",
-            padding: 0,
-            margin: "12px 0",
-            display: "grid",
-            gap: 6,
-            fontSize: 12,
-            color: "rgba(255, 230, 210, 0.85)",
-          }}
-        >
-          <li>
-            • Buyer commits up to <strong>{offer.maxQuantityTons} tons</strong>{" "}
-            at <strong>{formatRandPerTon(offer.pricePerTonZAR)}</strong>
-          </li>
-          <li>
-            • Funds are held in escrow by your cooperative until delivery
-          </li>
-          <li>
-            • You earn <strong>R {ZAR.format(savingsPerTon)}/ton more</strong>{" "}
-            than the local middleman pays
-          </li>
-          <li>
-            • Delivery confirmed by the cooperative releases payment to you
-            within 48 hours
-          </li>
-        </ul>
 
-        <div
-          style={{
-            marginTop: 14,
-            padding: "10px 12px",
-            borderRadius: 12,
-            background: "rgba(255, 184, 107, 0.08)",
-            border: "1px solid rgba(255, 184, 107, 0.25)",
-            fontSize: 11,
-            color: "rgba(255, 230, 210, 0.72)",
-            lineHeight: 1.5,
-          }}
-        >
-          <strong style={{ color: "#ffb86b" }}>Coming soon:</strong>{" "}
-          on-chain escrow + delivery confirmation. For the demo, matching is
-          previewed only — no commitment is created yet.
-        </div>
+        {state.kind === "success" ? (
+          <SuccessBody
+            signature={state.signature}
+            pda={state.pda}
+            onClose={onClose}
+          />
+        ) : (
+          <>
+            <p
+              style={{
+                fontSize: 12,
+                color: "rgba(255, 230, 210, 0.72)",
+                lineHeight: 1.5,
+                marginTop: 10,
+              }}
+            >
+              Locks <strong>{DEMO_RAND_LABEL}</strong>{" "}
+              <span style={{ color: "rgba(255, 230, 210, 0.45)" }}>
+                (= 0.01 SOL on devnet)
+              </span>{" "}
+              until the farmer confirms delivery. Earns the farmer{" "}
+              <strong>R {ZAR.format(savingsPerTon)}/ton</strong> more than
+              the typical middleman price.
+            </p>
 
-        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              flex: 1,
-              padding: "10px 16px",
-              borderRadius: 999,
-              border: "1px solid rgba(255, 230, 210, 0.14)",
-              background: "transparent",
-              color: "rgba(255, 230, 210, 0.72)",
-              fontSize: 12,
-              fontWeight: 700,
-              fontFamily: "inherit",
-              cursor: "pointer",
-            }}
-          >
-            Close
-          </button>
-        </div>
+            <label
+              style={{
+                display: "block",
+                marginTop: 14,
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: "rgba(255, 230, 210, 0.55)",
+                marginBottom: 6,
+              }}
+            >
+              Farmer wallet address
+            </label>
+            <input
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              value={farmerInput}
+              onChange={(e) => {
+                setFarmerInput(e.target.value);
+                if (state.kind === "error") setState({ kind: "idle" });
+              }}
+              disabled={state.kind === "busy"}
+              placeholder="Paste your other wallet's address"
+              style={{
+                width: "100%",
+                padding: "9px 12px",
+                background: "rgba(0, 0, 0, 0.38)",
+                border: "1px solid rgba(255, 230, 210, 0.14)",
+                borderRadius: 10,
+                color: "rgba(255, 245, 230, 0.95)",
+                fontSize: 12,
+                fontFamily:
+                  "var(--font-geist-mono), ui-monospace, monospace",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+
+            <div
+              style={{
+                marginTop: 12,
+                padding: "10px 12px",
+                borderRadius: 12,
+                background: "rgba(255, 184, 107, 0.06)",
+                border: "1px solid rgba(255, 184, 107, 0.18)",
+                fontSize: 11,
+                color: "rgba(255, 230, 210, 0.72)",
+                lineHeight: 1.5,
+              }}
+            >
+              <strong style={{ color: "#ffb86b" }}>Demo simplification:</strong>{" "}
+              the farmer themselves confirms delivery in this build. In
+              production, only the cooperative officer can confirm.
+            </div>
+
+            {state.kind === "error" ? (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  background: "rgba(255, 123, 107, 0.10)",
+                  border: "1px solid rgba(255, 123, 107, 0.35)",
+                  fontSize: 11,
+                  color: "#ffb0a3",
+                }}
+              >
+                {state.message}
+              </div>
+            ) : null}
+
+            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={state.kind === "busy"}
+                style={{
+                  flex: "0 0 auto",
+                  padding: "10px 16px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255, 230, 210, 0.14)",
+                  background: "transparent",
+                  color: "rgba(255, 230, 210, 0.72)",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  fontFamily: "inherit",
+                  cursor: state.kind === "busy" ? "wait" : "pointer",
+                  opacity: state.kind === "busy" ? 0.4 : 1,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={state.kind === "busy" || !farmerInput.trim()}
+                style={{
+                  flex: 1,
+                  padding: "10px 16px",
+                  borderRadius: 999,
+                  border: "none",
+                  background:
+                    "linear-gradient(135deg, #ff7b6b, #ffb86b)",
+                  color: "#1a0f0c",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  fontFamily: "inherit",
+                  cursor: state.kind === "busy" ? "wait" : "pointer",
+                  opacity: state.kind === "busy" ? 0.7 : 1,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                {state.kind === "busy" ? (
+                  <>
+                    <Loader2
+                      size={14}
+                      style={{ animation: "vuna-spin 0.8s linear infinite" }}
+                    />
+                    Signing & locking…
+                  </>
+                ) : (
+                  <>Lock {DEMO_RAND_LABEL} <ArrowRight size={14} /></>
+                )}
+                <style jsx>{`
+                  @keyframes vuna-spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                  }
+                `}</style>
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
+}
+
+function SuccessBody({
+  signature,
+  pda,
+  onClose,
+}: {
+  signature: string;
+  pda: string;
+  onClose: () => void;
+}) {
+  const explorer = `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
+  return (
+    <>
+      <p
+        style={{
+          fontSize: 12,
+          color: "rgba(255, 230, 210, 0.72)",
+          lineHeight: 1.5,
+          marginTop: 10,
+        }}
+      >
+        <strong style={{ color: "#7adf7d" }}>Funds are locked on-chain.</strong>{" "}
+        Switch your wallet to the farmer&apos;s account in Phantom. The deal
+        will appear under <em>Active deals</em>; tap{" "}
+        <strong>Confirm delivery</strong> to release the funds.
+      </p>
+      <dl
+        style={{
+          marginTop: 14,
+          display: "grid",
+          gap: 4,
+          fontSize: 10,
+          fontFamily: "var(--font-geist-mono), ui-monospace, monospace",
+          color: "rgba(255, 230, 210, 0.55)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+          <dt>Deal</dt>
+          <dd>{shortAddr(pda)}</dd>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+          <dt>Tx</dt>
+          <dd>
+            <a
+              href={explorer}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: "#ffb86b", textDecoration: "underline" }}
+            >
+              {shortAddr(signature)} ↗
+            </a>
+          </dd>
+        </div>
+      </dl>
+      <button
+        type="button"
+        onClick={onClose}
+        style={{
+          marginTop: 16,
+          width: "100%",
+          padding: "10px 16px",
+          borderRadius: 999,
+          border: "1px solid rgba(255, 230, 210, 0.14)",
+          background: "transparent",
+          color: "rgba(255, 230, 210, 0.72)",
+          fontSize: 12,
+          fontWeight: 700,
+          fontFamily: "inherit",
+          cursor: "pointer",
+        }}
+      >
+        Done
+      </button>
+    </>
+  );
+}
+
+// ============================================================================
+//  Active deal card — shown to both buyer and farmer once a deal is locked
+// ============================================================================
+
+type ConfirmState =
+  | { kind: "idle" }
+  | { kind: "busy" }
+  | { kind: "error"; message: string };
+
+function ActiveDealCard({
+  active,
+  myWallet,
+  onConfirm,
+}: {
+  active: ActiveDeal;
+  myWallet: string;
+  onConfirm: () => Promise<string>;
+}) {
+  const { cached, onChain } = active;
+  const isBuyer = cached.buyer === myWallet;
+  const isFarmer = cached.farmer === myWallet;
+  const released = onChain === null;
+
+  const [confirmState, setConfirmState] = useState<ConfirmState>({ kind: "idle" });
+
+  const lamports = onChain
+    ? Number(onChain.amountLamports)
+    : Number(BigInt(cached.amountLamports));
+  const sol = lamports / LAMPORTS_PER_SOL;
+
+  const handleConfirm = async () => {
+    setConfirmState({ kind: "busy" });
+    try {
+      await onConfirm();
+      // Card unmounts shortly after as parent refreshes the list.
+    } catch (e) {
+      setConfirmState({
+        kind: "error",
+        message: e instanceof Error ? e.message : "Transaction failed.",
+      });
+    }
+  };
+
+  const statusLabel = released
+    ? "Released"
+    : isFarmer
+    ? "Awaiting your confirmation"
+    : "Awaiting farmer";
+  const statusColor = released ? "#7adf7d" : "#ffb86b";
+
+  return (
+    <div className={styles.box}>
+      <div className={styles.boxBody}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+            marginBottom: 8,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 800,
+                color: "rgba(255, 245, 230, 0.95)",
+                marginBottom: 4,
+              }}
+            >
+              {cached.buyerOfferLabel ?? "Marketplace deal"}
+            </div>
+            <div
+              style={{
+                fontSize: 10,
+                fontFamily: "var(--font-geist-mono), ui-monospace, monospace",
+                color: "rgba(255, 230, 210, 0.45)",
+                display: "grid",
+                gap: 2,
+              }}
+            >
+              <div>buyer  {shortAddr(cached.buyer)}</div>
+              <div>farmer {shortAddr(cached.farmer)}</div>
+              <div>deal   {shortAddr(cached.pda)}</div>
+            </div>
+          </div>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: statusColor,
+              padding: "3px 9px",
+              borderRadius: 999,
+              border: `1px solid ${statusColor}55`,
+              background: `${statusColor}14`,
+              flexShrink: 0,
+            }}
+          >
+            {statusLabel}
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: 8,
+            marginBottom: 8,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 18,
+              fontWeight: 800,
+              color: "rgba(255, 245, 230, 0.95)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            ≈ R {Math.round(sol * 1000)} locked
+          </span>
+          <span
+            style={{
+              fontSize: 11,
+              color: "rgba(255, 230, 210, 0.45)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            ({sol.toFixed(3)} SOL)
+          </span>
+        </div>
+
+        {released ? (
+          <div
+            style={{
+              fontSize: 11,
+              color: "rgba(255, 230, 210, 0.72)",
+              padding: "8px 12px",
+              borderRadius: 10,
+              background: "rgba(46, 125, 50, 0.10)",
+              border: "1px solid rgba(46, 125, 50, 0.35)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <CheckCircle2 size={12} style={{ color: "#7adf7d" }} />
+            Funds delivered to farmer wallet.
+          </div>
+        ) : isFarmer ? (
+          <>
+            <button
+              type="button"
+              onClick={handleConfirm}
+              disabled={confirmState.kind === "busy"}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: "1px solid rgba(122, 223, 125, 0.5)",
+                background: "rgba(122, 223, 125, 0.12)",
+                color: "#7adf7d",
+                fontSize: 11,
+                fontWeight: 800,
+                fontFamily: "inherit",
+                cursor: confirmState.kind === "busy" ? "wait" : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                opacity: confirmState.kind === "busy" ? 0.7 : 1,
+              }}
+            >
+              {confirmState.kind === "busy" ? (
+                <>
+                  <Loader2
+                    size={11}
+                    style={{ animation: "vuna-spin 0.8s linear infinite" }}
+                  />
+                  Confirming…
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={11} />
+                  Confirm delivery → release funds
+                </>
+              )}
+              <style jsx>{`
+                @keyframes vuna-spin {
+                  from { transform: rotate(0deg); }
+                  to { transform: rotate(360deg); }
+                }
+              `}</style>
+            </button>
+            {confirmState.kind === "error" ? (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  background: "rgba(255, 123, 107, 0.10)",
+                  border: "1px solid rgba(255, 123, 107, 0.35)",
+                  fontSize: 10,
+                  color: "#ffb0a3",
+                }}
+              >
+                {confirmState.message}
+              </div>
+            ) : null}
+          </>
+        ) : isBuyer ? (
+          <span
+            style={{
+              fontSize: 11,
+              color: "rgba(255, 230, 210, 0.55)",
+            }}
+          >
+            Switch to the farmer wallet in Phantom to confirm delivery.
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function shortAddr(addr: string): string {
+  if (addr.length <= 12) return addr;
+  return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
 }

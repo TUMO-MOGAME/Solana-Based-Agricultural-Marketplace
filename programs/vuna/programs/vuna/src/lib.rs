@@ -81,4 +81,18 @@ pub mod vuna {
     ) -> Result<()> {
         instructions::settle_repayment::handler(ctx, sale_proceeds)
     }
+
+    // ---- Marketplace (Phase 2 — Deal escrow) ----
+
+    pub fn create_deal(
+        ctx: Context<CreateDeal>,
+        deal_id: u64,
+        amount_lamports: u64,
+    ) -> Result<()> {
+        instructions::create_deal::handler(ctx, deal_id, amount_lamports)
+    }
+
+    pub fn confirm_and_release(ctx: Context<ConfirmAndRelease>) -> Result<()> {
+        instructions::confirm_and_release::handler(ctx)
+    }
 }

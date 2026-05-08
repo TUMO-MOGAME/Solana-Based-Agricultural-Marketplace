@@ -6,6 +6,7 @@ use anchor_lang::prelude::*;
 // ---- PDA seed prefixes ----
 pub const FARMER_SEED: &[u8] = b"farmer";
 pub const GROW_PACK_SEED: &[u8] = b"pack";
+pub const DEAL_SEED: &[u8] = b"deal";
 
 // ---- Credit-score parameters (mirror core/credit-score.ts) ----
 #[constant]
