@@ -36,20 +36,30 @@ import {
 } from "lucide-react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { PublicKey } from "@solana/web3.js";
 import {
   createSupabaseBrowserClient,
   isSupabaseConfigured,
 } from "@/lib/supabase/client";
 import { WalletButton } from "@/lib/vuna/wallet-button";
+import {
+  fetchGrowPack,
+  getConnection,
+  type GrowPack,
+} from "@/lib/vuna/program";
 import styles from "./dashboard.module.css";
 
-type ProfileTab = "active" | "history" | "about";
+type ProfileTab = "active" | "insurance" | "history" | "about";
 
 const PROFILE_TABS: Array<{ id: ProfileTab; label: string }> = [
   { id: "active", label: "Active" },
+  { id: "insurance", label: "Insurance" },
   { id: "history", label: "History" },
   { id: "about", label: "About" },
 ];
+
+/** The demo Grow Pack we created via scripts/setup-devnet-demo.mjs. */
+const DEMO_PACK_ADDRESS = "AShtE5mNczJqoLYSQzASMHb5vLiAb3RSavPoLW4NyzAd";
 
 type DashUser = { name: string; email: string };
 
@@ -204,7 +214,8 @@ export default function DashboardPage() {
     {
       icon: ShieldCheck,
       label: "Insurance",
-      href: "/insurance/AShtE5mNczJqoLYSQzASMHb5vLiAb3RSavPoLW4NyzAd",
+      active: profileTab === "insurance",
+      onClick: () => goToTab("insurance"),
     },
     {
       icon: Wallet,
@@ -396,6 +407,8 @@ export default function DashboardPage() {
           {/* Tabbed body */}
           {profileTab === "active" ? (
             <ActiveTab firstName={firstName} />
+          ) : profileTab === "insurance" ? (
+            <InsuranceTab />
           ) : profileTab === "about" ? (
             <AboutTab user={user} />
           ) : (
@@ -683,6 +696,328 @@ function ActiveTab({ firstName }: { firstName: string }) {
       </div>
     </div>
   );
+}
+
+function InsuranceTab() {
+  const [pack, setPack] = useState<GrowPack | null>(null);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "missing" | "error">("loading");
+  const [errorMsg, setErrorMsg] = useState<string>("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const conn = getConnection();
+        const pubkey = new PublicKey(DEMO_PACK_ADDRESS);
+        const data = await fetchGrowPack(conn, pubkey);
+        if (cancelled) return;
+        if (!data) {
+          setLoadState("missing");
+        } else {
+          setPack(data);
+          setLoadState("ready");
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setErrorMsg(e instanceof Error ? e.message : String(e));
+        setLoadState("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loadState === "loading") {
+    return (
+      <div className={styles.timelineSingle}>
+        <div className={styles.box}>
+          <div className={styles.boxBody} style={{ textAlign: "center", padding: 28 }}>
+            <span style={{ fontSize: 13, color: "rgba(255, 230, 210, 0.55)" }}>
+              Reading pack from devnet…
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (loadState === "error") {
+    return (
+      <div className={styles.timelineSingle}>
+        <div className={styles.box}>
+          <div className={styles.boxHeader}>
+            <h2 className={styles.boxTitle}>Couldn&apos;t reach the chain</h2>
+          </div>
+          <div className={styles.boxBody}>
+            <span style={{ fontSize: 12, color: "rgba(255, 230, 210, 0.55)" }}>
+              {errorMsg}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (loadState === "missing" || !pack) {
+    return (
+      <div className={styles.timelineSingle}>
+        <div className={styles.box}>
+          <div className={styles.boxHeader}>
+            <h2 className={styles.boxTitle}>No active drought protection</h2>
+          </div>
+          <div className={styles.boxBody}>
+            <span style={{ fontSize: 13, color: "rgba(255, 230, 210, 0.72)" }}>
+              You don&apos;t have an active Grow Pack with insurance cover yet. Apply for one and the policy goes live the moment your inputs are delivered.
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const triggered = pack.status === "InsurancePaid" || pack.insurancePayout > 0n;
+  const rainfall = pack.rainfallPercentOfNorm;
+  const observedMm = Math.round((rainfall / 100) * 80);
+
+  return (
+    <div className={styles.timelineSingle}>
+      {/* Big payout banner */}
+      <div
+        className={`${styles.box} ${styles.session}`}
+        style={{
+          background:
+            "linear-gradient(135deg, rgba(255, 184, 107, 0.18), rgba(255, 123, 107, 0.10))",
+          border: "1px solid rgba(255, 184, 107, 0.45)",
+          boxShadow: "0 14px 32px rgba(255, 123, 107, 0.18)",
+        }}
+      >
+        <div className={styles.sessionEyebrow}>
+          <span className={styles.sessionDot} />
+          {triggered ? "Payout sent" : "No payout due"}
+        </div>
+        <h3
+          className={styles.sessionTitle}
+          style={{
+            background: "linear-gradient(135deg, #ff7b6b, #ffb86b)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
+            color: "transparent",
+            fontSize: 44,
+            lineHeight: 1.05,
+            marginTop: 6,
+          }}
+        >
+          {formatRand(pack.insurancePayout)}
+        </h3>
+        <p className={styles.sessionSubtitle} style={{ marginTop: 8 }}>
+          {triggered
+            ? "Sent to your account. No paperwork. No claim form."
+            : "Threshold not breached. Cover remains active."}
+        </p>
+      </div>
+
+      <div className={styles.timelinePair}>
+        {/* Why you were paid */}
+        <div className={styles.box}>
+          <div className={styles.boxHeader}>
+            <h2 className={styles.boxTitle}>
+              {triggered ? "Why you were paid" : "Rainfall observation"}
+            </h2>
+            <span className={styles.boxLabel}>{rainfall}%</span>
+          </div>
+          <div className={styles.boxBody}>
+            <div style={{ marginBottom: 6 }}>
+              <span style={{ fontSize: 13, color: "rgba(255, 230, 210, 0.72)" }}>
+                Rainfall in your area
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 16 }}>
+              <span
+                style={{
+                  fontSize: 36,
+                  fontWeight: 700,
+                  color: "rgba(255, 245, 230, 0.95)",
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                {rainfall}%
+              </span>
+              <span style={{ fontSize: 12, color: "rgba(255, 230, 210, 0.55)" }}>
+                of 100% norm (≈ {observedMm}mm of 80mm)
+              </span>
+            </div>
+            <RainfallBars
+              rainfallPercent={rainfall}
+              thresholdPercent={pack.thresholdPercent}
+            />
+          </div>
+        </div>
+
+        {/* Pack details */}
+        <div className={styles.box}>
+          <div className={styles.boxHeader}>
+            <h2 className={styles.boxTitle}>Pack details</h2>
+            <span className={styles.boxLabel}>{pack.status}</span>
+          </div>
+          <div className={styles.boxBody}>
+            <DetailRow label="Bundle cost" value={formatRand(pack.bundleCost)} />
+            <DetailRow label="Service fee" value={formatRand(pack.serviceFee)} />
+            <DetailRow label="Total repayment" value={formatRand(pack.totalRepayment)} />
+            <DetailRow label="Threshold" value={`${pack.thresholdPercent}% of norm`} />
+            <DetailRow label="Max payout" value={formatRand(pack.maxPayout)} />
+            <DetailRow label="Insurance payout" value={formatRand(pack.insurancePayout)} highlight />
+            <DetailRow label="Pack" value={shortPackId(DEMO_PACK_ADDRESS)} mono />
+          </div>
+        </div>
+      </div>
+
+      {/* Reassurance */}
+      <div
+        className={styles.box}
+        style={{
+          background: "rgba(46, 125, 50, 0.10)",
+          border: "1px solid rgba(46, 125, 50, 0.35)",
+        }}
+      >
+        <div className={styles.boxBody}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "rgba(255, 245, 230, 0.95)" }}>
+            Your Grow Pack is still active.
+          </div>
+          <div style={{ fontSize: 12, color: "rgba(255, 230, 210, 0.72)", marginTop: 4 }}>
+            Talk to your co-op about replanting options.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailRow({
+  label,
+  value,
+  highlight,
+  mono,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  mono?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "6px 0",
+        borderBottom: "1px solid rgba(255, 230, 210, 0.06)",
+        gap: 12,
+      }}
+    >
+      <span style={{ fontSize: 12, color: "rgba(255, 230, 210, 0.55)" }}>{label}</span>
+      <span
+        style={{
+          fontSize: highlight ? 14 : 13,
+          fontWeight: highlight ? 800 : 600,
+          color: highlight ? "#ffb86b" : "rgba(255, 245, 230, 0.92)",
+          fontVariantNumeric: "tabular-nums",
+          fontFamily: mono ? "var(--font-geist-mono), ui-monospace, monospace" : "inherit",
+          textAlign: "right",
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function RainfallBars({
+  rainfallPercent,
+  thresholdPercent,
+}: {
+  rainfallPercent: number;
+  thresholdPercent: number;
+}) {
+  // Six even-weight buckets, smoothed across the season — same approach as
+  // the standalone /insurance/[packId] page. Replace with real per-week
+  // oracle data once we have it.
+  const weeks = 6;
+  const barFraction = rainfallPercent / weeks;
+  const max = 30;
+  const thresholdY = thresholdPercent / weeks;
+  return (
+    <div
+      style={{
+        position: "relative",
+        height: 92,
+        display: "flex",
+        alignItems: "flex-end",
+        gap: 10,
+        padding: "0 28px 0 4px",
+        marginTop: 6,
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: 4,
+          right: 28,
+          bottom: `${(thresholdY / max) * 100}%`,
+          borderTop: "2px dashed #C0392B",
+        }}
+      />
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          right: 0,
+          bottom: `${(thresholdY / max) * 100}%`,
+          transform: "translateY(-50%)",
+          fontSize: 9,
+          fontWeight: 800,
+          color: "#C0392B",
+          letterSpacing: "0.06em",
+        }}
+      >
+        min
+      </span>
+      {Array.from({ length: weeks }).map((_, i) => {
+        const heightPct = Math.min(100, (barFraction / max) * 100);
+        const belowThreshold = barFraction < thresholdY;
+        return (
+          <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%" }}>
+            <div
+              style={{
+                width: "100%",
+                marginTop: "auto",
+                height: `${heightPct}%`,
+                borderRadius: 3,
+                background: belowThreshold ? "#E67E22" : "#2E7D32",
+                boxShadow: belowThreshold ? "0 0 12px rgba(230, 126, 34, 0.35)" : "none",
+              }}
+            />
+            <div style={{ fontSize: 9, color: "rgba(255, 230, 210, 0.4)", marginTop: 4 }}>
+              W{i + 1}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const ZAR_FORMATTER = new Intl.NumberFormat("en-ZA", {
+  maximumFractionDigits: 0,
+  minimumFractionDigits: 0,
+});
+function formatRand(amount: bigint | number): string {
+  const n = typeof amount === "bigint" ? Number(amount) : amount;
+  return `R ${ZAR_FORMATTER.format(n)}`;
+}
+function shortPackId(id: string): string {
+  if (id.length <= 8) return id;
+  return `${id.slice(0, 4)}…${id.slice(-4)}`;
 }
 
 function AboutTab({ user }: { user: DashUser }) {
