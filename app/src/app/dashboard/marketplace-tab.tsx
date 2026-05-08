@@ -1,61 +1,37 @@
 "use client";
 
-// <MarketplaceTab /> — direct buyer ↔ farmer produce marketplace.
+// <MarketplaceTab /> — direct buyer ↔ farmer marketplace.
 //
-// Phase 1 (the listings UI): mock buyer offers + farmer listings,
-// surfacing the "+ X% vs middleman" pitch from CLAUDE.md §3. The
-// numbers are illustrative SAGIS/DAFF spot averages.
+// This surface intentionally shows ONLY real on-chain data:
 //
-// Phase 2 (the on-chain escrow): the **Match buyer** modal now signs
-// a real `create_deal` transaction that locks lamports into a Deal
-// PDA on devnet. The receiving farmer wallet then signs
-// `confirm_and_release` to close the PDA and pull the lamports.
-// The amount is 0.01 SOL displayed as "≈ R 10" — devnet has no real
-// stablecoin, so we use lamports as a stand-in.
+//   1. Active deals — Phase 2 escrow PDAs (Deal accounts) where the
+//      connected wallet is either buyer or farmer. The farmer side
+//      sees a Confirm-delivery button that signs `confirm_and_release`
+//      and pulls the locked lamports.
+//   2. Your pending harvests — the connected farmer's Grow Packs read
+//      from devnet, filtered to harvest-still-coming statuses
+//      (Requested / Approved / Active).
 //
-// Demo flow:
-//   1. Connect as the BUYER wallet, click Match buyer, paste your
-//      other wallet's address as farmer, sign → SOL locked on-chain.
-//   2. Switch wallets to FARMER in Phantom — the dashboard reconnects
-//      and the deal shows up under "Active deals".
-//   3. Click "Confirm delivery" → sign → SOL flows to FARMER.
+// The earlier hardcoded "Buyers looking now" section was removed by
+// request — buyer offers will return as on-chain `BuyerOffer` PDAs in
+// Phase 3, posted by real partner buyers (mills, retailers, brewers).
+// Until then this surface is honest about what's real.
 //
-// In production, the cooperative — not the farmer — confirms delivery,
-// and the locked unit is a ZAR-stablecoin not SOL. The simplifications
-// are documented in the on-chain instruction handlers and on the
-// PDF-presentation Phase 2 page.
-//
-// Hide-the-chain rule (CLAUDE.md §7) — Rand and harvest dates in the
-// pitch UI. The Phase 2 demo section says "≈ R 10" but reveals that
-// it's lamports for the demo, since this is a developer-facing flow,
-// not the farmer-facing surface.
+// Hide-the-chain rule (CLAUDE.md §7) — Rand and harvest dates only in
+// farmer-facing copy. The Phase 2 confirm flow shows lamports because
+// it's the developer-facing demo surface.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Sprout,
-  MapPin,
   CalendarDays,
-  ArrowRight,
-  Store,
-  TrendingUp,
-  X,
+  ShieldCheck,
   CheckCircle2,
   Loader2,
-  ShieldCheck,
 } from "lucide-react";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { PublicKey, Transaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import {
-  useConnection,
-  useWallet,
-} from "@solana/wallet-adapter-react";
-import {
-  PublicKey,
-  Transaction,
-  LAMPORTS_PER_SOL,
-} from "@solana/web3.js";
-import {
-  dealPda,
   fetchDeal,
-  makeCreateDealIx,
   makeConfirmAndReleaseIx,
   farmerIdHashFrom,
   farmerPda,
@@ -66,161 +42,31 @@ import {
 } from "@/lib/vuna/program";
 import {
   readDemoDeals,
-  addDemoDeal,
   removeDemoDeal,
-  randomDealId,
   type DemoDeal,
 } from "@/lib/vuna/demo-deals";
 import styles from "./dashboard.module.css";
 
-// 0.01 SOL is what the demo locks per match. Displayed as "≈ R 10" —
-// Rand-pegged stablecoins live on a different chain or aren't on
-// devnet, so we use lamports as a realistic stand-in.
-const DEMO_LAMPORTS = BigInt(Math.round(0.01 * LAMPORTS_PER_SOL));
-const DEMO_RAND_LABEL = "R 10";
-
-type Crop = "Maize" | "Wheat" | "Soybean" | "Sorghum" | "Beans";
-
-type BuyerOffer = {
-  id: string;
-  buyer: string;
-  buyerType: "Mill" | "Retailer" | "Co-op" | "Brewer" | "Exporter";
-  crop: Crop;
-  region: string;
-  maxQuantityTons: number;
-  pricePerTonZAR: number;
-  /** What the local middleman typically pays for this crop, R/ton.
-   *  We surface (pricePerTonZAR - middlemanPriceZAR) as the headline
-   *  "your savings" number. Real-world numbers ballpark from SAGIS
-   *  + DAFF spot prices for SA smallholders, 2024–2025 averages. */
-  middlemanPriceZAR: number;
-  byMonth: string;
-};
-
-// ─── Indicative buyer offers ──────────────────────────────────────────
-//
-// These represent the kind of partner buyers (mills, retailers,
-// brewers, co-ops) we'll onboard for the H1 2027 pilot. Pricing
-// reflects SAGIS / DAFF spot averages from late 2024 / early 2025.
-//
-// In Phase 3 these will be replaced by `BuyerOffer` PDAs that real
-// buyers post on-chain. The Match modal already creates real on-chain
-// Deal PDAs from these rows — only the *offer source* is curated.
-const BUYER_OFFERS: BuyerOffer[] = [
-  {
-    id: "lebone-maize-ec",
-    buyer: "Lebone Mills",
-    buyerType: "Mill",
-    crop: "Maize",
-    region: "Eastern Cape",
-    maxQuantityTons: 50,
-    pricePerTonZAR: 5400,
-    middlemanPriceZAR: 4200,
-    byMonth: "Oct 2026",
-  },
-  {
-    id: "spar-maize-gp",
-    buyer: "Spar Group",
-    buyerType: "Retailer",
-    crop: "Maize",
-    region: "Gauteng",
-    maxQuantityTons: 40,
-    pricePerTonZAR: 5500,
-    middlemanPriceZAR: 4200,
-    byMonth: "Oct 2026",
-  },
-  {
-    id: "pioneer-wheat-wc",
-    buyer: "Pioneer Foods",
-    buyerType: "Mill",
-    crop: "Wheat",
-    region: "Western Cape",
-    maxQuantityTons: 30,
-    pricePerTonZAR: 6800,
-    middlemanPriceZAR: 5400,
-    byMonth: "Nov 2026",
-  },
-  {
-    id: "cape-soya-kzn",
-    buyer: "Cape Soya Ltd",
-    buyerType: "Mill",
-    crop: "Soybean",
-    region: "KwaZulu-Natal",
-    maxQuantityTons: 20,
-    pricePerTonZAR: 9500,
-    middlemanPriceZAR: 7600,
-    byMonth: "Sep 2026",
-  },
-  {
-    id: "wc-brewers-sorghum",
-    buyer: "Western Cape Brewers",
-    buyerType: "Brewer",
-    crop: "Sorghum",
-    region: "Western Cape",
-    maxQuantityTons: 15,
-    pricePerTonZAR: 4900,
-    middlemanPriceZAR: 3700,
-    byMonth: "Aug 2026",
-  },
-  {
-    id: "lentil-beans-fs",
-    buyer: "Lentil Co-op",
-    buyerType: "Co-op",
-    crop: "Beans",
-    region: "Free State",
-    maxQuantityTons: 12,
-    pricePerTonZAR: 11200,
-    middlemanPriceZAR: 8800,
-    byMonth: "Sep 2026",
-  },
-];
-
-// "Your harvest listings" used to be hardcoded mock data. It now reads
-// the connected farmer's on-chain Grow Packs across the last 3 seasons
-// — see <FarmerHarvests /> below.
-
-const CROP_FILTERS: Array<"All" | Crop> = [
-  "All",
-  "Maize",
-  "Wheat",
-  "Soybean",
-  "Sorghum",
-  "Beans",
-];
-
 const ZAR = new Intl.NumberFormat("en-ZA", { maximumFractionDigits: 0 });
 
-function formatRandPerTon(zarPerTon: number): string {
-  return `R ${ZAR.format(zarPerTon)}/ton`;
-}
-
-function pctSavings(direct: number, middleman: number): number {
-  if (middleman <= 0) return 0;
-  return Math.round(((direct - middleman) / middleman) * 100);
-}
+// ============================================================================
+//  Tab body
+// ============================================================================
 
 type ActiveDeal = {
   cached: DemoDeal;
-  /** Truthy on-chain state if the PDA still exists; null after release. */
+  /** Truthy if PDA still on-chain; null after release. */
   onChain: Deal | null;
 };
 
 export function MarketplaceTab() {
   const { publicKey, sendTransaction } = useWallet();
   const { connection } = useConnection();
-  const [cropFilter, setCropFilter] = useState<"All" | Crop>("All");
-  const [matchTarget, setMatchTarget] = useState<BuyerOffer | null>(null);
   const [deals, setDeals] = useState<ActiveDeal[]>([]);
-  const [dealsRefreshKey, setDealsRefreshKey] = useState(0);
-
-  const filteredOffers = useMemo(() => {
-    if (cropFilter === "All") return BUYER_OFFERS;
-    return BUYER_OFFERS.filter((o) => o.crop === cropFilter);
-  }, [cropFilter]);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Load deals from localStorage and check each one against the chain.
-  // Re-run whenever the wallet changes, or when something updates the
-  // refresh key (e.g. after a successful match or release).
+  // Re-runs on wallet change or after a successful release.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -240,11 +86,9 @@ export function MarketplaceTab() {
     return () => {
       cancelled = true;
     };
-  }, [connection, publicKey, dealsRefreshKey]);
+  }, [connection, publicKey, refreshKey]);
 
-  const refreshDeals = useCallback(() => {
-    setDealsRefreshKey((k) => k + 1);
-  }, []);
+  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   // Filter to deals where this wallet is buyer or farmer. Released
   // deals (PDA closed on-chain) still surface so users can see history.
@@ -255,16 +99,6 @@ export function MarketplaceTab() {
       ({ cached }) => cached.buyer === me || cached.farmer === me,
     );
   }, [deals, publicKey]);
-
-  // Called by the match modal once create_deal is confirmed on-chain.
-  const handleMatchSuccess = useCallback(
-    (deal: DemoDeal) => {
-      addDemoDeal(deal);
-      refreshDeals();
-      setMatchTarget(null);
-    },
-    [refreshDeals],
-  );
 
   // Farmer side — sign confirm_and_release. Returns the tx signature.
   const handleConfirmDeal = useCallback(
@@ -281,26 +115,15 @@ export function MarketplaceTab() {
       await connection.confirmTransaction(sig, "confirmed");
       // PDA is now closed on-chain — drop from the local list.
       removeDemoDeal(active.cached.pda);
-      refreshDeals();
+      refresh();
       return sig;
     },
-    [publicKey, sendTransaction, connection, refreshDeals],
+    [publicKey, sendTransaction, connection, refresh],
   );
-
-  // The headline pitch — average savings across visible offers, in
-  // percent, vs. middleman buy-back. This is the demo's "wow" number.
-  const avgSavingsPct = useMemo(() => {
-    if (filteredOffers.length === 0) return 0;
-    const total = filteredOffers.reduce(
-      (sum, o) => sum + pctSavings(o.pricePerTonZAR, o.middlemanPriceZAR),
-      0,
-    );
-    return Math.round(total / filteredOffers.length);
-  }, [filteredOffers]);
 
   return (
     <div className={styles.timelineSingle}>
-      {/* Header pitch card */}
+      {/* Pitch / explainer card */}
       <div
         className={`${styles.box} ${styles.session}`}
         style={{
@@ -313,100 +136,17 @@ export function MarketplaceTab() {
           <span className={styles.sessionDot} />
           Direct buyers — no middlemen
         </div>
-        <h3 className={styles.sessionTitle}>
-          Sell direct, keep more.
-        </h3>
+        <h3 className={styles.sessionTitle}>Skip the middleman.</h3>
         <p className={styles.sessionSubtitle}>
-          Mills, retailers and brewers buying directly from cooperatives.
-          Average <strong>{avgSavingsPct}% more</strong> than what local
-          middlemen typically pay.
+          Mills, retailers and brewers will buy your harvest directly here,
+          paying around 25&#37; more than the local middleman. Buyer offers
+          arrive on-chain in Phase 3 — for now this surface shows only the
+          parts that are real today: your pending harvests, and any
+          escrow deals you&apos;re a party to.
         </p>
       </div>
 
-      {/* Crop filter */}
-      <div
-        style={{
-          display: "flex",
-          gap: 6,
-          flexWrap: "wrap",
-          padding: "0 4px",
-        }}
-        role="tablist"
-        aria-label="Filter buyer offers by crop"
-      >
-        {CROP_FILTERS.map((c) => {
-          const active = cropFilter === c;
-          return (
-            <button
-              key={c}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setCropFilter(c)}
-              style={{
-                padding: "6px 14px",
-                borderRadius: 999,
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-                fontFamily: "inherit",
-                cursor: "pointer",
-                border: active
-                  ? "1px solid rgba(255, 184, 107, 0.55)"
-                  : "1px solid rgba(255, 230, 210, 0.14)",
-                background: active
-                  ? "linear-gradient(135deg, rgba(255, 123, 107, 0.18), rgba(255, 184, 107, 0.10))"
-                  : "rgba(255, 255, 255, 0.04)",
-                color: active ? "#ffb86b" : "rgba(255, 230, 210, 0.72)",
-                transition: "all 0.15s",
-              }}
-            >
-              {c}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Buyer offers grid */}
-      <div style={{ display: "grid", gap: 12 }}>
-        <div
-          style={{
-            fontSize: 11,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: "rgba(255, 230, 210, 0.55)",
-            fontWeight: 700,
-            padding: "0 4px",
-          }}
-        >
-          Buyers looking now
-        </div>
-        {filteredOffers.length === 0 ? (
-          <div className={styles.box}>
-            <div
-              className={styles.boxBody}
-              style={{ textAlign: "center", padding: 28 }}
-            >
-              <span
-                style={{ fontSize: 13, color: "rgba(255, 230, 210, 0.55)" }}
-              >
-                No offers for {cropFilter} this month. Try another crop.
-              </span>
-            </div>
-          </div>
-        ) : (
-          filteredOffers.map((offer) => (
-            <BuyerOfferCard
-              key={offer.id}
-              offer={offer}
-              onMatch={() => setMatchTarget(offer)}
-            />
-          ))
-        )}
-      </div>
-
-      {/* Phase 2 — active on-chain deals for the connected wallet */}
+      {/* Active deals — only when this wallet is in any */}
       {publicKey && myDeals.length > 0 ? (
         <div style={{ display: "grid", gap: 12, marginTop: 8 }}>
           <div
@@ -441,7 +181,7 @@ export function MarketplaceTab() {
         </div>
       ) : null}
 
-      {/* Farmer's own listings */}
+      {/* Pending harvests */}
       <div style={{ display: "grid", gap: 12, marginTop: 8 }}>
         <div
           style={{
@@ -463,11 +203,10 @@ export function MarketplaceTab() {
             Your pending harvests
           </span>
         </div>
-
         <FarmerHarvests />
       </div>
 
-      {/* Footnote */}
+      {/* Footer */}
       <div
         style={{
           fontSize: 10,
@@ -478,180 +217,9 @@ export function MarketplaceTab() {
           lineHeight: 1.55,
         }}
       >
-        Buyer offers shown above are indicative pilot pricing — SAGIS / DAFF
-        spot averages, late 2024 / early 2025. Real buyers will post offers
-        on-chain in Phase 3. <strong>Match Buyer locks real funds on devnet</strong>{" "}
-        via the Phase 2 escrow program; pending harvests below read your{" "}
-        <strong>real on-chain Grow Packs</strong>.
-      </div>
-
-      {/* Match modal — Phase 2: signs a real create_deal tx on devnet */}
-      {matchTarget ? (
-        <MatchModal
-          offer={matchTarget}
-          onClose={() => setMatchTarget(null)}
-          onMatched={handleMatchSuccess}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-// ============================================================================
-//  Cards
-// ============================================================================
-
-function BuyerOfferCard({
-  offer,
-  onMatch,
-}: {
-  offer: BuyerOffer;
-  onMatch: () => void;
-}) {
-  const savingsPct = pctSavings(offer.pricePerTonZAR, offer.middlemanPriceZAR);
-  const savingsPerTon = offer.pricePerTonZAR - offer.middlemanPriceZAR;
-
-  return (
-    <div className={styles.box}>
-      <div className={styles.boxBody}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: 12,
-            marginBottom: 10,
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                marginBottom: 4,
-              }}
-            >
-              <Store size={14} style={{ color: "#ffb86b", flexShrink: 0 }} />
-              <span
-                style={{
-                  fontSize: 14,
-                  fontWeight: 800,
-                  color: "rgba(255, 245, 230, 0.95)",
-                }}
-              >
-                {offer.buyer}
-              </span>
-              <span
-                style={{
-                  fontSize: 9,
-                  letterSpacing: "0.12em",
-                  textTransform: "uppercase",
-                  color: "rgba(255, 230, 210, 0.4)",
-                  fontWeight: 700,
-                }}
-              >
-                · {offer.buyerType}
-              </span>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                fontSize: 11,
-                color: "rgba(255, 230, 210, 0.55)",
-              }}
-            >
-              <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
-                <Sprout size={10} /> {offer.crop}
-              </span>
-              <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
-                <MapPin size={10} /> {offer.region}
-              </span>
-              <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
-                <CalendarDays size={10} /> by {offer.byMonth}
-              </span>
-            </div>
-          </div>
-
-          {/* Savings badge */}
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "4px 10px",
-              borderRadius: 999,
-              background: "rgba(46, 125, 50, 0.18)",
-              border: "1px solid rgba(46, 125, 50, 0.45)",
-              color: "#7adf7d",
-              fontSize: 11,
-              fontWeight: 800,
-              flexShrink: 0,
-            }}
-            title={`Direct buyer pays R ${ZAR.format(savingsPerTon)}/ton more than the typical local middleman`}
-          >
-            <TrendingUp size={11} />
-            +{savingsPct}% vs middleman
-          </div>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 800,
-                color: "rgba(255, 245, 230, 0.95)",
-                fontVariantNumeric: "tabular-nums",
-                lineHeight: 1.1,
-              }}
-            >
-              {formatRandPerTon(offer.pricePerTonZAR)}
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: "rgba(255, 230, 210, 0.55)",
-                marginTop: 2,
-              }}
-            >
-              Up to <strong>{offer.maxQuantityTons} tons</strong> ·{" "}
-              <span style={{ color: "rgba(255, 230, 210, 0.35)" }}>
-                middleman ≈ R {ZAR.format(offer.middlemanPriceZAR)}/ton
-              </span>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onMatch}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 999,
-              border: "1px solid rgba(255, 184, 107, 0.5)",
-              background: "rgba(255, 184, 107, 0.12)",
-              color: "#ffb86b",
-              fontSize: 11,
-              fontWeight: 700,
-              fontFamily: "inherit",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              flexShrink: 0,
-            }}
-          >
-            Match buyer <ArrowRight size={12} />
-          </button>
-        </div>
+        Pending harvests above read your real on-chain Grow Packs. Phase 3
+        will add on-chain buyer offers from partner mills, retailers, and
+        brewers.
       </div>
     </div>
   );
@@ -662,10 +230,9 @@ function BuyerOfferCard({
 // ============================================================================
 //
 // "Your pending harvests" reads the connected wallet's Grow Packs across
-// the last 3 seasons (same lookback window as the History tab) and shows
-// the ones with status Approved / Active / Disbursed — i.e. the farmer
-// has a pack but hasn't sold the harvest yet, so it's matchable against
-// a buyer offer.
+// the last 3 seasons (same lookback as the History tab) and shows the ones
+// with status Requested / Approved / Active — packs whose harvest is still
+// ahead and so could be matched by a buyer offer.
 //
 // Settled packs (Repaid / InsurancePaid / Defaulted) are intentionally
 // hidden here — those harvests are no longer available for sale.
@@ -682,9 +249,9 @@ function FarmerHarvests() {
   const { publicKey } = useWallet();
   const { connection } = useConnection();
   const [rows, setRows] = useState<HarvestRow[]>([]);
-  const [state, setState] = useState<"loading" | "ready" | "no-wallet" | "empty" | "error">(
-    "loading",
-  );
+  const [state, setState] = useState<
+    "loading" | "ready" | "no-wallet" | "empty" | "error"
+  >("loading");
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
@@ -712,18 +279,16 @@ function FarmerHarvests() {
           }),
         );
         if (cancelled) return;
-        // Only show packs whose harvest is still ahead — Approved (just
-        // approved by co-op), Active (insurance live, harvest coming),
-        // Disbursed (inputs delivered). Settled packs are excluded.
         const matchable: HarvestRow[] = fetched
           .filter(
             (r): r is { season: number; packAddress: string; data: GrowPack } =>
               r.data !== null,
           )
-          .filter(({ data }) =>
-            data.status === "Approved" ||
-            data.status === "Active" ||
-            data.status === "Requested",
+          .filter(
+            ({ data }) =>
+              data.status === "Approved" ||
+              data.status === "Active" ||
+              data.status === "Requested",
           )
           .map(({ season, packAddress, data }) => ({
             season,
@@ -925,415 +490,7 @@ function HarvestCard({ row }: { row: HarvestRow }) {
 }
 
 // ============================================================================
-//  Match modal — Phase 2: signs a real create_deal tx on devnet
-// ============================================================================
-//
-// The modal asks the buyer (the connected wallet) for the farmer's
-// pubkey. On submit, it builds a `create_deal` instruction that locks
-// DEMO_LAMPORTS into a Deal PDA seeded by (buyer, farmer, dealId).
-// On success, the deal is added to the localStorage cache so the
-// receiving wallet (when the user switches in Phantom) sees it under
-// "Active deals".
-
-type MatchState =
-  | { kind: "idle" }
-  | { kind: "busy" }
-  | { kind: "success"; signature: string; pda: string }
-  | { kind: "error"; message: string };
-
-function MatchModal({
-  offer,
-  onClose,
-  onMatched,
-}: {
-  offer: BuyerOffer;
-  onClose: () => void;
-  onMatched: (deal: DemoDeal) => void;
-}) {
-  const { publicKey, sendTransaction } = useWallet();
-  const { connection } = useConnection();
-  const [farmerInput, setFarmerInput] = useState("");
-  const [state, setState] = useState<MatchState>({ kind: "idle" });
-
-  const savingsPerTon = offer.pricePerTonZAR - offer.middlemanPriceZAR;
-
-  const handleSubmit = async () => {
-    if (!publicKey || !sendTransaction) {
-      setState({ kind: "error", message: "Connect a wallet first." });
-      return;
-    }
-    let farmer: PublicKey;
-    try {
-      farmer = new PublicKey(farmerInput.trim());
-    } catch {
-      setState({
-        kind: "error",
-        message: "That farmer address isn't a valid Solana wallet.",
-      });
-      return;
-    }
-    if (farmer.equals(publicKey)) {
-      setState({
-        kind: "error",
-        message:
-          "Farmer wallet must be different from the buyer (your connected wallet).",
-      });
-      return;
-    }
-
-    setState({ kind: "busy" });
-    const dealIdStr = randomDealId();
-    const dealId = BigInt(dealIdStr);
-    const [pda] = dealPda(publicKey, farmer, dealId);
-
-    try {
-      const ix = makeCreateDealIx({
-        buyer: publicKey,
-        farmer,
-        dealId,
-        amountLamports: DEMO_LAMPORTS,
-      });
-      const tx = new Transaction().add(ix);
-      const sig = await sendTransaction(tx, connection);
-      await connection.confirmTransaction(sig, "confirmed");
-
-      const stored: DemoDeal = {
-        pda: pda.toBase58(),
-        buyer: publicKey.toBase58(),
-        farmer: farmer.toBase58(),
-        dealId: dealIdStr,
-        amountLamports: DEMO_LAMPORTS.toString(),
-        createdAtMs: Date.now(),
-        buyerOfferLabel: `${offer.buyer} · ${offer.crop}`,
-        createSignature: sig,
-      };
-      onMatched(stored);
-      setState({ kind: "success", signature: sig, pda: pda.toBase58() });
-    } catch (e) {
-      setState({
-        kind: "error",
-        message: e instanceof Error ? e.message : "Transaction failed.",
-      });
-    }
-  };
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Match with ${offer.buyer}`}
-      onClick={state.kind === "busy" ? undefined : onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0, 0, 0, 0.55)",
-        backdropFilter: "blur(6px)",
-        display: "grid",
-        placeItems: "center",
-        padding: 16,
-        zIndex: 50,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: 460,
-          width: "100%",
-          background: "#1a0f0c",
-          borderRadius: 18,
-          border: "1px solid rgba(255, 184, 107, 0.35)",
-          padding: 22,
-          boxShadow: "0 32px 80px rgba(0, 0, 0, 0.6)",
-          color: "rgba(255, 245, 230, 0.95)",
-          position: "relative",
-        }}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={state.kind === "busy"}
-          aria-label="Close"
-          style={{
-            position: "absolute",
-            top: 14,
-            right: 14,
-            width: 30,
-            height: 30,
-            borderRadius: 999,
-            background: "rgba(255, 255, 255, 0.06)",
-            border: "1px solid rgba(255, 230, 210, 0.14)",
-            color: "rgba(255, 230, 210, 0.72)",
-            cursor: state.kind === "busy" ? "wait" : "pointer",
-            opacity: state.kind === "busy" ? 0.4 : 1,
-            display: "grid",
-            placeItems: "center",
-          }}
-        >
-          <X size={14} />
-        </button>
-
-        <div
-          style={{
-            fontSize: 10,
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-            color: "#ffb86b",
-            fontWeight: 800,
-            marginBottom: 8,
-          }}
-        >
-          {state.kind === "success" ? "Funds locked" : "Match buyer"}
-        </div>
-        <h3 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 6px" }}>
-          {offer.buyer} · {offer.crop}
-        </h3>
-
-        {state.kind === "success" ? (
-          <SuccessBody
-            signature={state.signature}
-            pda={state.pda}
-            onClose={onClose}
-          />
-        ) : (
-          <>
-            <p
-              style={{
-                fontSize: 12,
-                color: "rgba(255, 230, 210, 0.72)",
-                lineHeight: 1.5,
-                marginTop: 10,
-              }}
-            >
-              Locks <strong>{DEMO_RAND_LABEL}</strong>{" "}
-              <span style={{ color: "rgba(255, 230, 210, 0.45)" }}>
-                (= 0.01 SOL on devnet)
-              </span>{" "}
-              until the farmer confirms delivery. Earns the farmer{" "}
-              <strong>R {ZAR.format(savingsPerTon)}/ton</strong> more than
-              the typical middleman price.
-            </p>
-
-            <label
-              style={{
-                display: "block",
-                marginTop: 14,
-                fontSize: 10,
-                fontWeight: 800,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                color: "rgba(255, 230, 210, 0.55)",
-                marginBottom: 6,
-              }}
-            >
-              Farmer wallet address
-            </label>
-            <input
-              type="text"
-              autoComplete="off"
-              spellCheck={false}
-              value={farmerInput}
-              onChange={(e) => {
-                setFarmerInput(e.target.value);
-                if (state.kind === "error") setState({ kind: "idle" });
-              }}
-              disabled={state.kind === "busy"}
-              placeholder="Paste your other wallet's address"
-              style={{
-                width: "100%",
-                padding: "9px 12px",
-                background: "rgba(0, 0, 0, 0.38)",
-                border: "1px solid rgba(255, 230, 210, 0.14)",
-                borderRadius: 10,
-                color: "rgba(255, 245, 230, 0.95)",
-                fontSize: 12,
-                fontFamily:
-                  "var(--font-geist-mono), ui-monospace, monospace",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-
-            <div
-              style={{
-                marginTop: 12,
-                padding: "10px 12px",
-                borderRadius: 12,
-                background: "rgba(255, 184, 107, 0.06)",
-                border: "1px solid rgba(255, 184, 107, 0.18)",
-                fontSize: 11,
-                color: "rgba(255, 230, 210, 0.72)",
-                lineHeight: 1.5,
-              }}
-            >
-              <strong style={{ color: "#ffb86b" }}>Demo simplification:</strong>{" "}
-              the farmer themselves confirms delivery in this build. In
-              production, only the cooperative officer can confirm.
-            </div>
-
-            {state.kind === "error" ? (
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  background: "rgba(255, 123, 107, 0.10)",
-                  border: "1px solid rgba(255, 123, 107, 0.35)",
-                  fontSize: 11,
-                  color: "#ffb0a3",
-                }}
-              >
-                {state.message}
-              </div>
-            ) : null}
-
-            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={state.kind === "busy"}
-                style={{
-                  flex: "0 0 auto",
-                  padding: "10px 16px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(255, 230, 210, 0.14)",
-                  background: "transparent",
-                  color: "rgba(255, 230, 210, 0.72)",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  fontFamily: "inherit",
-                  cursor: state.kind === "busy" ? "wait" : "pointer",
-                  opacity: state.kind === "busy" ? 0.4 : 1,
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={state.kind === "busy" || !farmerInput.trim()}
-                style={{
-                  flex: 1,
-                  padding: "10px 16px",
-                  borderRadius: 999,
-                  border: "none",
-                  background:
-                    "linear-gradient(135deg, #ff7b6b, #ffb86b)",
-                  color: "#1a0f0c",
-                  fontSize: 12,
-                  fontWeight: 800,
-                  fontFamily: "inherit",
-                  cursor: state.kind === "busy" ? "wait" : "pointer",
-                  opacity: state.kind === "busy" ? 0.7 : 1,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                }}
-              >
-                {state.kind === "busy" ? (
-                  <>
-                    <Loader2
-                      size={14}
-                      style={{ animation: "vuna-spin 0.8s linear infinite" }}
-                    />
-                    Signing & locking…
-                  </>
-                ) : (
-                  <>Lock {DEMO_RAND_LABEL} <ArrowRight size={14} /></>
-                )}
-                <style jsx>{`
-                  @keyframes vuna-spin {
-                    from { transform: rotate(0deg); }
-                    to { transform: rotate(360deg); }
-                  }
-                `}</style>
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SuccessBody({
-  signature,
-  pda,
-  onClose,
-}: {
-  signature: string;
-  pda: string;
-  onClose: () => void;
-}) {
-  const explorer = `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
-  return (
-    <>
-      <p
-        style={{
-          fontSize: 12,
-          color: "rgba(255, 230, 210, 0.72)",
-          lineHeight: 1.5,
-          marginTop: 10,
-        }}
-      >
-        <strong style={{ color: "#7adf7d" }}>Funds are locked on-chain.</strong>{" "}
-        Switch your wallet to the farmer&apos;s account in Phantom. The deal
-        will appear under <em>Active deals</em>; tap{" "}
-        <strong>Confirm delivery</strong> to release the funds.
-      </p>
-      <dl
-        style={{
-          marginTop: 14,
-          display: "grid",
-          gap: 4,
-          fontSize: 10,
-          fontFamily: "var(--font-geist-mono), ui-monospace, monospace",
-          color: "rgba(255, 230, 210, 0.55)",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-          <dt>Deal</dt>
-          <dd>{shortAddr(pda)}</dd>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-          <dt>Tx</dt>
-          <dd>
-            <a
-              href={explorer}
-              target="_blank"
-              rel="noreferrer"
-              style={{ color: "#ffb86b", textDecoration: "underline" }}
-            >
-              {shortAddr(signature)} ↗
-            </a>
-          </dd>
-        </div>
-      </dl>
-      <button
-        type="button"
-        onClick={onClose}
-        style={{
-          marginTop: 16,
-          width: "100%",
-          padding: "10px 16px",
-          borderRadius: 999,
-          border: "1px solid rgba(255, 230, 210, 0.14)",
-          background: "transparent",
-          color: "rgba(255, 230, 210, 0.72)",
-          fontSize: 12,
-          fontWeight: 700,
-          fontFamily: "inherit",
-          cursor: "pointer",
-        }}
-      >
-        Done
-      </button>
-    </>
-  );
-}
-
-// ============================================================================
-//  Active deal card — shown to both buyer and farmer once a deal is locked
+//  Active deal card — shown once a Phase 2 deal PDA is locked
 // ============================================================================
 
 type ConfirmState =
