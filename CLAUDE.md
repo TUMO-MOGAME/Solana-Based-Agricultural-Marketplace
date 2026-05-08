@@ -1,4 +1,4 @@
-# CLAUDE.md — Project Vuna
+# CLAUDE.md — Project Vuna / Mazra'at albaan
 
 > **Claude: read this first.** It tells you what we are building, why, and how we work.
 > If you have just opened in this directory, this is your briefing.
@@ -7,11 +7,20 @@
 
 ## 1. What this project is
 
-**Project Vuna** is a Solana-based agricultural marketplace for South African smallholder farmers. We are building it for the **Solana 2026 Frontier Hackathon — Physical World Applications track**.
+A Solana-based agricultural marketplace for South African smallholder farmers, built for the **Solana 2026 Frontier Hackathon — Physical World Applications track**.
+
+**Names:**
+- **User-facing brand:** *Mazra'at albaan* (page titles, dashboard headings, marketing copy)
+- **Internal codename / Solana program crate:** *Vuna* (matches the deployed program — do not rename)
 
 **Authors:** Tumo Mogame & Pitsi Kgaume
 
-**One-sentence pitch:** *A phone app that gives small farmers seeds, fertilizer and drought insurance on credit, repaid at harvest, with insurance auto-paid by on-chain weather oracles — without ever showing the farmer the word "blockchain".*
+**One-sentence pitch:** *A phone app that gives small farmers seeds, fertilizer and drought insurance on credit, repaid at harvest, with insurance auto-paid by on-chain weather data — without ever showing the farmer the word "blockchain".*
+
+**Live deployments (devnet, free):**
+- Frontend: https://solana-based-agricultural-marketpla.vercel.app/
+- Solana program ID: `7LUkUHVazSw732334JKFP88VAFc4iYXXJZkgFnZV9kqA` (devnet)
+- Demo Grow Pack: `AShtE5mNczJqoLYSQzASMHb5vLiAb3RSavPoLW4NyzAd` (status: `InsurancePaid`, R 1 400 paid)
 
 ---
 
@@ -23,68 +32,77 @@
 ├── README.md                ← public-facing intro
 ├── .gitignore
 │
-├── package.json             ← workspace root (vitest test runner)
+├── package.json             ← workspace root (vitest for core/)
 ├── tsconfig.json
 ├── vitest.config.ts
 │
 ├── core/                    ← shared TS business logic (canonical spec)
-│   ├── CLAUDE.md
 │   ├── credit-score.ts · grow-pack.ts · parametric.ts
 │   ├── repayment.ts · currency.ts · validation.ts
-│   ├── types.ts · index.ts
+│   └── types.ts · index.ts
 │
-├── tests/                   ← Vitest suite (99 passing)
-│   ├── CLAUDE.md
-│   ├── README.md
-│   ├── unit/                  one suite per core module
-│   ├── integration/           cross-module composition tests
-│   └── helpers/fixtures.ts
+├── tests/                   ← Vitest suite for core/ (99 passing)
 │
 ├── docs/                    ← narrative + reference docs
-│   ├── CLAUDE.md
-│   ├── proposal.pdf            (12-page formal proposal)
-│   ├── source-paper.pdf        (research paper Vuna is built on)
-│   ├── architecture.md         (system design)
-│   ├── regulatory.md           (NCA / FAIS / FSCA / SARB / POPIA)
-│   ├── glossary.md
-│   └── outreach/               (insurer outreach pack — see its CLAUDE.md)
-│       ├── 01_insurer-targets.md
-│       ├── 02_one-pager.md
-│       ├── 03_email-template.md
-│       ├── 04_meeting-brief.md
-│       ├── 05_followup-template.md
-│       ├── 06_product-brief.md
-│       ├── Vuna_one-pager.pdf       (built by scripts/build_one_pager.py)
-│       └── Vuna_product-brief.pdf   (built by scripts/build_product_brief.py)
+│   ├── proposal.pdf · source-paper.pdf
+│   ├── architecture.md · regulatory.md · glossary.md
+│   └── outreach/               (insurer outreach pack — one-pager + product-brief PDFs)
 │
 ├── design/                  ← UI design + mockups
-│   ├── CLAUDE.md
-│   ├── palette.md              (color tokens; Tailwind-ready)
-│   ├── build_mockups.py        (regenerate the PNGs)
-│   └── mockups/
-│       ├── mobile.png
-│       └── web.png
+│   ├── palette.md              (original cream/green/gold brand palette)
+│   ├── build_mockups.py
+│   └── mockups/{mobile,web}.png
 │
-├── programs/                ← Solana / Anchor on-chain code (scaffold)
-│   ├── CLAUDE.md
-│   └── README.md
+├── programs/vuna/           ← Anchor program — DEPLOYED to devnet
+│   ├── Anchor.toml · Cargo.toml
+│   ├── programs/vuna/src/
+│   │   ├── lib.rs · constants.rs · error.rs · state.rs
+│   │   └── instructions/{register_farmer,request_grow_pack,
+│   │       approve_grow_pack,disburse_grow_pack,
+│   │       trigger_insurance_payout,settle_repayment}.rs
+│   ├── programs/vuna/tests/lifecycle.rs   (litesvm integration test)
+│   └── target/deploy/vuna.so              (built binary)
 │
-├── app/                     ← Next.js frontend (farmer + co-op) (scaffold)
-│   ├── CLAUDE.md
-│   └── README.md
+├── app/                     ← Next.js frontend — DEPLOYED to Vercel
+│   ├── package.json · next.config.ts · vitest.config.ts · tsconfig.json
+│   ├── public/fonts/Satoshi-*.woff2
+│   ├── scripts/setup-devnet-demo.mjs       (one-shot demo data setup)
+│   ├── supabase/migrations/                (3 SQL files)
+│   └── src/
+│       ├── app/                            (Next.js App Router)
+│       │   ├── page.tsx                    (Mazra'at albaan landing)
+│       │   ├── layout.tsx
+│       │   ├── login · signup · forgot-password · reset-password · auth/callback
+│       │   ├── dashboard/                  (3-column shell, 5 in-page tabs)
+│       │   │   ├── page.tsx
+│       │   │   ├── apply-tab.tsx           (shared with /grow-pack/new)
+│       │   │   ├── dashboard.module.css
+│       │   │   └── loading.tsx
+│       │   ├── grow-pack/new/              (standalone wrapper around <ApplyTab/>)
+│       │   └── insurance/[packId]/         (standalone shareable URL)
+│       ├── components/ui/                  (shadcn primitives, vendored)
+│       └── lib/
+│           ├── supabase/                   (browser + server clients, demo-mode aware)
+│           └── vuna/                       (Solana client)
+│               ├── program.ts              (PDA helpers, Borsh codecs, ix encoders)
+│               ├── program.test.ts         (25 vitest tests)
+│               ├── provider.tsx            (wallet-adapter providers)
+│               └── wallet-button.tsx       (compact connect/disconnect)
 │
-├── api/                     ← Node.js backend (scaffold)
-│   ├── CLAUDE.md
-│   └── README.md
+├── api/                     ← Node.js backend (scaffold — not started)
 │
-└── scripts/                 ← utility / build scripts
-    ├── build_proposal_pdf.py
-    └── README.md
+├── scripts/                 ← Python build scripts
+│   ├── build_proposal_pdf.py
+│   ├── build_one_pager.py
+│   └── build_product_brief.py
+│
+└── spikes/                  ← throwaway research code
+    └── oracle-check/        (Pyth + Switchboard probes; FINDINGS.md)
 ```
 
-`programs/`, `app/`, `api/` are intentionally empty scaffolds. We initialise them with `anchor init`, `npx create-next-app`, and `npm init` respectively when we start coding — those tools want to own those directories.
+`api/` is still an empty scaffold — backend service not started yet.
 
-If a generated artifact is missing, regenerate it from the build scripts in `scripts/` or `design/`.
+If a generated artifact (PDFs, mockups, vuna.so) is missing, regenerate from the matching build script in `scripts/` or `design/`, or run `cargo build-sbf` in `programs/vuna/programs/vuna/`.
 
 ---
 
@@ -100,22 +118,22 @@ Smallholders grow ~70% of African food but get under 5% of bank lending. Closing
 
 ---
 
-## 4. Tech stack
+## 4. Tech stack — what's actually shipped
 
-| Layer | Tool | Why |
+| Layer | Tool | State |
 |-|-|-|
-| Blockchain | Solana | sub-cent fees, sub-second finality, ecosystem |
-| Smart contracts | Anchor (Rust) | standard Solana framework |
-| Oracle | Pyth Network | native Solana weather feeds |
-| Frontend (MVP) | Next.js + Tailwind CSS | fast to ship, good wallet adapters |
-| Frontend (prod) | React Native PWA | rural mobile reach |
-| Wallet (demo) | Phantom | acceptable for hackathon demo |
-| Wallet (prod) | Magic.link / custodial | farmer NEVER sees a seed phrase |
-| Stablecoin | USDC (demo); ZAR-pegged (prod) | most liquid; remove FX risk later |
-| Backend | Node.js + Express | speed of development |
-| Database | PostgreSQL via Supabase | auth + storage + realtime |
-| File storage | IPFS / Arweave | docs and attestations |
-| Hosting | Vercel + Railway | cheap, fast, low ops |
+| Blockchain | Solana (Anchor 1.0.2 / Rust 1.95 MSVC) | ✅ deployed devnet |
+| Frontend | Next.js 15.5 + React 19 + Tailwind CSS 4 | ✅ deployed Vercel |
+| Wallet (demo) | `@solana/wallet-adapter-*` with Phantom | ✅ wired |
+| Wallet (prod) | Magic.link / Privy custodial | ⏳ not yet wired (planned) |
+| Auth | Supabase (`@supabase/ssr`) with demo-mode fallback | ✅ optional |
+| Backend | Node.js + Express | ❌ `api/` not started |
+| Hosting | Vercel for frontend | ✅ live |
+| Oracle (weather) | TBD — likely underwriter-attestation model | ❌ Pyth has no weather feeds (confirmed); Switchboard is build-your-own; Insurance Act forces a licensed underwriter into the loop anyway. See `spikes/oracle-check/FINDINGS.md`. |
+| Oracle (price) | Pyth Network | ⏳ planned (USD/ZAR FX, crop futures for fair-price reference) |
+| Stablecoin | USDC (devnet, demo-only) | ⏳ no real value moved |
+| Database | PostgreSQL via Supabase (3 migrations on disk) | ⏳ migrations not applied to a real Supabase project |
+| File storage | IPFS / Arweave | ❌ not started |
 
 ---
 
@@ -153,14 +171,17 @@ Scope discipline matters. If a new idea expands one of these boundaries, push ba
 ## 7. Design rules — non-negotiable
 
 - **Mobile-first.** Farmer is on a low-end Android, often offline.
-- **Hide the chain.** No "wallet", "blockchain", "stablecoin", "USDC", "Solana" anywhere a farmer sees. Always show Rand.
-- **Earthy palette, not crypto-flashy.**
-  - Primary green `#0B3D2E`
-  - Mid green `#1F6B49`
-  - Cream background `#F5F2EA`
-  - Gold accent `#E8B931`
-  - Success `#2E7D32`, Warn `#E67E22`, Danger `#C0392B`
+- **Hide the chain (from farmers).** No "wallet", "blockchain", "stablecoin", "USDC", "Solana" anywhere the farmer sees. Always show Rand. The wallet connect button visible in the demo dashboard is for *co-op staff / dev / hackathon judges* — the farmer-facing path will use a custodial provider (Magic.link / Privy) so they never see a seed phrase.
 - **The drought-payout screen is the marketing screen.** Lead every demo with it.
+
+### Palette — what's where
+
+The shipped frontend uses the **dark-plum + coral-amber theme** inherited from the Social-Assembly shell we lifted on 2026-05-07. The `design/palette.md` file captures the *original* Mazra'at albaan brand palette (cream/forest-green/gold) used in `design/mockups/`. Both exist on purpose — mockups are the brand reference; the shipped UI optimised for visual coherence with the auth + dashboard chrome we kept.
+
+| Where used | Tokens |
+|-|-|
+| Shipped frontend (`app/`) — root, dashboard, auth, /insurance, /grow-pack/new | bg `#1a0f0c` · accent gradient `#ff7b6b → #ffb86b` · cream text `rgba(255, 245, 230, 0.95)` · glass cards `rgba(255,255,255,0.04)` · dashed-threshold red `#C0392B` |
+| Mockups (`design/mockups/`) | primary green `#0B3D2E` · cream `#F5F2EA` · gold `#E8B931` |
 
 ---
 
@@ -181,14 +202,16 @@ We hold these licences ourselves OR partner with someone who does. No shortcuts.
 
 ## 9. Key vocabulary
 
+- **Mazra'at albaan** — the user-facing brand. Used in page titles, dashboard headings, marketing copy.
+- **Vuna** — internal codename. The Solana program crate, the program ID, the technical project shorthand. Means "harvest" in isiZulu/isiXhosa. Do *not* rename — the program is already deployed.
 - **Grow Pack** — bundled credit + seeds + fertilizer + insurance. Our flagship product.
-- **Vuna** — "harvest" in isiZulu and isiXhosa.
-- **Cooperative / co-op** — partner farmer organisation that handles registration & KYC.
-- **Parametric insurance** — payout triggered by measurable data (rainfall < 50mm), not by claims investigation.
-- **CASP** — Crypto Asset Service Provider, the FSCA licence.
-- **NCR** — National Credit Regulator.
-- **FSCA** — Financial Sector Conduct Authority.
-- **SARB** — South African Reserve Bank.
+- **Cooperative / co-op** — partner farmer organisation that handles registration & KYC. In the demo, the connected wallet plays this role.
+- **Parametric insurance** — payout triggered by measurable data (rainfall < 50% of norm), not by claims investigation.
+- **CASP** — Crypto Asset Service Provider, the FSCA licence required to handle crypto.
+- **NCR** — National Credit Regulator (lending licence).
+- **FSCA** — Financial Sector Conduct Authority (insurance + crypto licensing).
+- **SARB** — South African Reserve Bank (exchange-control regulation).
+- **PDA** — Program Derived Address. Both `FarmerAccount` and `GrowPack` are PDAs (deterministic addresses derived from the program ID + seeds).
 
 ---
 
@@ -228,37 +251,58 @@ We hold these licences ourselves OR partner with someone who does. No shortcuts.
 
 ## 13. Current build status
 
-- [x] Research paper analysed
-- [x] Formal proposal PDF generated
-- [x] Mobile mockup PNG generated
-- [x] Web mockup PNG generated
-- [x] CLAUDE.md briefing (this file)
-- [x] Project structure scaffold (docs/ design/ programs/ app/ api/ scripts/)
-- [x] Oracle spike — **Pyth has no weather data. See `spikes/oracle-check/FINDINGS.md`.**
-- [x] Switchboard spike — Switchboard is build-your-own infrastructure, not a source. Confirmed.
-- [x] Insurer outreach pack drafted — `docs/outreach/`. Targets: LBIC, Santam Agriculture, Hollard, Old Mutual Insure.
-- [x] Product brief drafted — `docs/outreach/Vuna_product-brief.pdf` for follow-up after first call
-- [x] **`core/` library scaffolded with 6 modules + 99 passing tests.** Run with `npm test`.
-- [x] Rust 1.95 (MSVC) + Solana CLI 3.1.14 + avm 1.0.2 + anchor-cli 1.0.2 installed
-- [x] Windows Developer Mode enabled (required for Solana symlinks)
-- [x] **Anchor program scaffolded at `programs/vuna/` and built successfully** (`target/deploy/vuna.so`)
-- [x] **Step 1 of porting: account types + 6 instruction skeletons.** `FarmerAccount`, `GrowPack`, `GrowPackStatus`, and `register_farmer` / `request_grow_pack` / `approve_grow_pack` / `disburse_grow_pack` / `trigger_insurance_payout` / `settle_repayment` all defined and compiling.
-- [x] **Step 2: credit-score logic ported.** `CreditEvent` enum + `FarmerAccount::apply_event` mirror `core/credit-score.ts`. All 11 TS test cases mirrored as Rust `#[test]`s and passing. Counter updates moved to settlement (TS semantics). Insurance-first rule: drought year never damages score.
-- [x] **Step 3: grow-pack pricing logic ported.** `GrowPackPricing` + `GrowPackQuote` + `GrowPack::quote()` mirror `core/grow-pack.ts`. 9 of the 11 TS test cases mirrored.
-- [x] **Step 4: parametric trigger logic ported.** `ParametricPolicy` + `PayoutTier` + `PayoutResult` + `ParametricPolicy::evaluate_payout` mirror `core/parametric.ts`. All 10 happy-path tier tests + 2 validation tests mirrored as Rust `#[test]`s. **`trigger_insurance_payout` now computes payout amount on-chain from rainfall** — caller can't inflate.
-- [x] **Step 5: harvest-settlement logic ported.** `RepaymentResult` + `GrowPack::settle_at_harvest` mirror `core/repayment.ts`. 7 happy-path tests + the 6-case invariant test all passing. Settlement handler now delegates the math.
-- [x] **Step 6: end-to-end litesvm lifecycle tests.** `tests/lifecycle.rs` loads `vuna.so` into an in-process runtime and runs three scenarios — happy path (score 600→620), drought-payout (score unchanged via insurance-first rule), default (score 600→500). All 6 instructions exercised against the real binary. **44 Rust tests + 99 TS tests = 143 passing.**
-- [ ] First insurer cold email sent — recommended first contact: LBIC
-- [ ] Step 3: port `core/grow-pack.ts` validation + tests
-- [ ] Step 4: port `core/parametric.ts` tier evaluation into `trigger_insurance_payout` + tests
-- [ ] Step 5: tighten `settle_repayment` math + the 6-case invariant test
-- [ ] Step 6: end-to-end `litesvm` integration test for the full Grow Pack lifecycle
-- [ ] Cooperative outreach — not started
-- [ ] Hackathon registration confirmed
-- [ ] Anchor program scaffold — not started
-- [ ] Frontend repo — not started
+### Live deployments
+- **Frontend:** `https://solana-based-agricultural-marketpla.vercel.app/` (Vercel, auto-deploys from `main`)
+- **Solana program:** `7LUkUHVazSw732334JKFP88VAFc4iYXXJZkgFnZV9kqA` on devnet (BPF Loader Upgradeable, authority = `9ndRtL...veYeKyQ`)
+- **Demo Grow Pack:** `AShtE5mNczJqoLYSQzASMHb5vLiAb3RSavPoLW4NyzAd` (status: `InsurancePaid`, R 1 400 paid out at 40% rainfall)
 
-⚠️ **Note for future-Claude:** The proposal PDF (§4 and §5) still names Pyth as the weather oracle. That is now wrong. Do NOT regenerate the proposal until the alternative is decided — otherwise we'll have to regenerate twice.
+### Done — on-chain
+- [x] Research paper analysed; proposal PDF and mockups generated
+- [x] Project structure (docs / design / programs / app / api / scripts / tests / spikes / core)
+- [x] Oracle spikes — Pyth has no weather feeds; Switchboard is build-your-own. Decision: route through licensed-underwriter attestation. See `spikes/oracle-check/FINDINGS.md`.
+- [x] Insurer outreach pack drafted — `docs/outreach/` (one-pager + product-brief PDFs, targets LBIC / Santam / Hollard / OMI)
+- [x] **`core/` library** — 6 pure-TS modules (credit-score, grow-pack, parametric, repayment, currency, validation) + 99 Vitest tests
+- [x] **Anchor program at `programs/vuna/`** — 5 source modules (lib, constants, error, state, instructions/), 6 instructions, 41 host-side cargo tests, 3 litesvm integration tests
+- [x] Program built (`target/deploy/vuna.so`, 204 KB) and deployed to devnet
+- [x] Demo data setup script (`app/scripts/setup-devnet-demo.mjs`) — registers a farmer, requests + approves + disburses a Grow Pack, fires a 40% rainfall trigger
+
+### Done — frontend
+- [x] Lifted Next.js + Supabase shell from "Social Assembly" project on 2026-05-07
+- [x] Stripped 38+ files of agent-backend cruft, trimmed dashboard CSS 5293 → 945 lines, removed ~2.9 MB of unused assets
+- [x] Rebranded to **Mazra'at albaan** (page titles, auth pages, root landing, dashboard chrome)
+- [x] Made Supabase optional with demo-mode fallback (no env vars → stub user)
+- [x] Wired wallet adapter (Phantom) — `VunaWalletProvider` in root layout, `<WalletButton />` in dashboard
+- [x] Built `lib/vuna/program.ts` — `PROGRAM_ID`, PDA helpers, hand-rolled Borsh decoders for `GrowPack` + `FarmerAccount`, fetchers, instruction encoders for `register_farmer` and `request_grow_pack` (discriminators hardcoded — Anchor IDL builder is broken on Windows). 25 Vitest tests.
+- [x] **Routes — all working end-to-end against the deployed program:**
+  - `/` — dark-plum Mazra'at albaan landing
+  - `/login` · `/signup` · `/forgot-password` · `/reset-password` · `/auth/callback` — all with demo-mode bypass
+  - `/dashboard` — 3-column shell (left sidebar / profile + tabs / right rail) with **5 in-page tabs**: Active, Apply, Insurance, History, About. Compact profile (168 px height, 64 px avatar). Wallet item in left sidebar shows truncated pubkey when connected.
+  - `/grow-pack/new` — standalone wrapper around the shared `<ApplyTab />` for shareable URLs
+  - `/insurance/[packId]` — server-rendered shareable URL, dark-plum themed (matches dashboard tab visually)
+- [x] **No route hops from inside the dashboard.** Apply, Insurance, History, About all transform the middle column in place.
+- [x] Deployed to Vercel (Root Directory = `app/`, Framework = Next.js)
+
+### Tests, all passing
+- 99 Vitest tests in root `tests/` — `core/` rules
+- 41 cargo unit tests + 3 litesvm integration tests in `programs/vuna/programs/vuna/` — Rust port + on-chain lifecycle
+- 25 Vitest tests in `app/src/lib/vuna/program.test.ts` — PDA derivation, pricing math, instruction-encoder byte layouts
+- **Total: 168 tests across 3 languages**
+
+### Not yet done
+- [ ] First insurer cold email sent — recommended first contact: LBIC
+- [ ] Custodial wallet (Magic.link / Privy) for the farmer-facing surface — currently only Phantom is wired
+- [ ] Co-op web dashboard (`/coop/*`) — entirely unbuilt
+- [ ] Marketplace surface (placeholder menu item with `"soon"` badge)
+- [ ] Real Supabase project linked + migrations applied
+- [ ] `api/` Node.js backend service
+- [ ] On-chain encoders for `approve_grow_pack` / `disburse_grow_pack` / `trigger_insurance_payout` / `settle_repayment` are inlined in `app/scripts/setup-devnet-demo.mjs` but not yet exposed from `lib/vuna/program.ts` — needed for a co-op dashboard
+- [ ] Farmer-history view (returning users, multi-pack list, credit-score chart)
+- [ ] isiZulu / isiXhosa localisation
+- [ ] USSD / feature-phone bridge
+- [ ] Audit the Anchor program before any mainnet deploy
+
+### ⚠️ Known stale docs
+- `docs/proposal.pdf` (§4 + §5) still names **Pyth** as the weather oracle. This is wrong — Pyth has no weather feeds. Do NOT regenerate the proposal PDF until we've decided the underwriter-attestation architecture in detail; otherwise we'll regenerate twice.
 
 When you change status, edit this section.
 
@@ -270,4 +314,4 @@ Re-read **§7 (Disadvantages)** and **§8 (Challenges)** of `docs/proposal.pdf`.
 
 ---
 
-*Last updated: 2026-05-06 by Tumo & Pitsi (with Claude).*
+*Last updated: 2026-05-08 by Tumo & Pitsi (with Claude).*

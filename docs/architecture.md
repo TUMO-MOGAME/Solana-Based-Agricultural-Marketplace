@@ -112,7 +112,15 @@ If a piece of data is sensitive (POPIA) or doesn't need to be trustless, it belo
 ## Critical paths to validate first
 
 1. ~~**Pyth weather integration**~~ → **DONE.** Pyth has no weather feeds. See `spikes/oracle-check/FINDINGS.md`.
-2. **Weather oracle alternative.** Probe Switchboard for SA-region rainfall data. If nothing usable, plan the custom-oracle build OR commit early to the underwriter-attestation model.
-3. **Underwriting partnership.** The Insurance Act 2017 forces us into a relationship with a licensed insurer. Identify candidates (Old Mutual Agri, Santam Agriculture, Hollard, MiWay) and confirm their willingness to underwrite a parametric product. This shapes the oracle architecture.
-4. **Custodial wallet UX.** Farmer must never see a seed phrase. Pick the provider (Magic.link, Privy, custom) before committing to the frontend.
+2. ~~**Switchboard probe**~~ → **DONE.** Switchboard is build-your-own-oracle infrastructure, not a source of weather feeds. Means options (a) custom oracle and (b) Switchboard collapse to the same decision.
+3. **Underwriting partnership.** The Insurance Act 2017 forces us into a relationship with a licensed insurer. Identify candidates (LBIC / Santam Agriculture / Hollard / Old Mutual Insure) and confirm their willingness to underwrite a parametric product. This shapes the oracle architecture — the underwriter likely IS the oracle (signs attestations the program verifies). See `docs/outreach/`.
+4. **Custodial wallet UX.** Farmer must never see a seed phrase. Pick the provider (Magic.link, Privy, custom) before committing to a farmer-facing wallet flow. *The current shipped frontend uses Phantom for hackathon-stage demo only.*
 5. **Co-op approval flow.** The 48-hour human review is a feature, not a bug — it's how we keep fraud down.
+
+## Where the architecture currently stands (2026-05-08)
+
+The on-chain program implements the full Grow Pack lifecycle with deterministic numerics ported from `core/`. The `app/` frontend reads + writes against the deployed devnet program via hand-rolled Borsh codecs in `app/src/lib/vuna/program.ts`. Demo data is created via `app/scripts/setup-devnet-demo.mjs`.
+
+The `trigger_insurance_payout` instruction currently accepts a rainfall percentage from the caller and computes the payout amount itself via `ParametricPolicy::evaluate_payout`. When the underwriter integration lands (per item 3 above), a sibling `attest_insurance_payout` instruction will accept a signed underwriter attestation as the source of truth, with the on-chain code merely verifying the signature.
+
+Live: `7LUkUHVazSw732334JKFP88VAFc4iYXXJZkgFnZV9kqA` on devnet, frontend at https://solana-based-agricultural-marketpla.vercel.app/.

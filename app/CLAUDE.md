@@ -1,102 +1,124 @@
 # app/ — CLAUDE context
 
-Next.js frontend for Project Vuna — both the **farmer mobile app** and the **co-op web dashboard**.
+Next.js frontend for **Mazra'at albaan** (codename: **Vuna**). Deployed to Vercel: https://solana-based-agricultural-marketpla.vercel.app/
 
-## Status (2026-05-07)
+## Status (2026-05-08)
 
-**This is not a fresh scaffold.** It is a **faithful copy of a separate Next.js + Supabase project** (the "Social Assembly" frontend, lifted on 2026-05-07 from
-`c:\Social_____Assembly___Emma___` on branch `FrontEndSample_2`).
+Originally lifted on 2026-05-07 from a separate Next.js + Supabase project ("Social Assembly") for the auth + dashboard shell. As of 2026-05-08 it has been:
 
-We copied it because its auth + dashboard shell is already working end-to-end and gives Vuna a head start. The Python agent backend it talks to was deliberately left behind; routes that depend on it will return clean 503s.
+- **Stripped** of the Social Assembly cruft (38+ files: coach-chat, CopilotKit, orchestrator, video-panel, journey/exemplar/pipeline panels, marketing/about/team pages, agent-only Supabase migrations, ~2.9 MB of unused images). `dashboard.module.css` trimmed from 5,293 → 945 lines.
+- **Rebranded** to Mazra'at albaan (page metadata, auth pages, root landing, dashboard chrome). Visual theme: dark plum (`#1a0f0c`) base + coral-amber (`#ff7b6b → #ffb86b`) gradient accents.
+- **Wired to Solana** — `lib/vuna/program.ts` has hand-rolled Borsh decoders + instruction encoders for the deployed program at `7LUkUHVazSw732334JKFP88VAFc4iYXXJZkgFnZV9kqA` on devnet. 25 Vitest tests cover PDA derivation + pricing math + ix byte layouts.
+- **Wallet adapter (Phantom) wired** via `<VunaWalletProvider />` in the root layout.
 
-### What works without the agent backend
-- Login / signup / forgot-password / reset-password (Supabase email auth)
-- Welcome / about / team marketing pages
-- Dashboard shell — sidebars, profile, timeline tabs
-- Events page (uses static `FALLBACK_EVENTS`)
-- Notifications panel UI (renders empty until something writes to `public.notifications`)
-- Sessions sidebar (localStorage-backed)
-- Posts table reads
-- Profile auto-create trigger (Supabase only)
+## Routes — shipped
 
-### What WON'T work until the agent backend exists (or until we replace it)
-- Coaching chat — `/api/coach-chat` returns 503
-- Trend-alerts auto-population
-- Orchestrator pipeline button — likewise 503
-- Video / image analysis
+| Route | What |
+|-|-|
+| `/` | Mazra'at albaan landing — dark-plum hero, 3 feature cards |
+| `/login` · `/signup` · `/forgot-password` · `/reset-password` · `/auth/callback` | Supabase auth, with demo-mode bypass when env vars are missing |
+| `/dashboard` | 3-column shell (left sidebar / profile + tabs / right rail). **5 in-page tabs:** Active, Apply, Insurance, History, About. Compact 168 px profile header, 64 px avatar with coral-amber gradient. Wallet item in left sidebar shows truncated pubkey when connected. |
+| `/grow-pack/new` | Standalone wrapper around `<ApplyTab />` for shareable apply-direct links |
+| `/insurance/[packId]` | Server-rendered shareable URL — anyone can open it, the server fetches the pack from devnet at request time |
 
-All those surfaces render, fail with a clear error, and stop. None crash the page.
+**Rule of the dashboard:** no in-app click navigates away from `/dashboard`. Everything (Apply, Insurance, etc.) is an in-page tab. Standalone `/grow-pack/new` and `/insurance/[packId]` exist purely for shareable deep-link URLs.
 
-## What still needs to happen for Vuna
+## Key files
 
-The copy is **not yet rebranded**. The about page, team page, dashboard copy, and several routes (`coach-chat`, `trend-alerts`, `orchestrate`) are Social-Assembly-shaped. Treat them as scaffolding — pattern + plumbing reused, content + domain replaced.
+| File | What |
+|-|-|
+| `src/app/page.tsx` | Root landing |
+| `src/app/layout.tsx` | Root layout — mounts `<VunaWalletProvider />`, sets metadata |
+| `src/app/dashboard/page.tsx` | The dashboard with all 5 tabs |
+| `src/app/dashboard/apply-tab.tsx` | The Grow Pack application form (used by both dashboard tab AND `/grow-pack/new`) |
+| `src/app/dashboard/dashboard.module.css` | Dashboard CSS — 945 lines after the Social Assembly trim |
+| `src/app/dashboard/loading.tsx` | Minimal Mazra'at albaan loading pill (replaced the old "Loading Creator Studio…" skeleton) |
+| `src/app/insurance/[packId]/page.tsx` | Server-rendered shareable insurance view |
+| `src/app/grow-pack/new/page.tsx` | Thin wrapper around `<ApplyTab />` |
+| `src/lib/vuna/program.ts` | Solana client — `PROGRAM_ID`, PDA helpers, Borsh decoders, instruction encoders |
+| `src/lib/vuna/program.test.ts` | 25 Vitest tests for the client |
+| `src/lib/vuna/provider.tsx` | `<VunaWalletProvider />` — Connection + WalletProvider + WalletModalProvider |
+| `src/lib/vuna/wallet-button.tsx` | Compact connect/disconnect button |
+| `src/lib/supabase/client.ts` | Browser Supabase client + `isSupabaseConfigured()` for demo-mode |
+| `scripts/setup-devnet-demo.mjs` | One-shot devnet setup — registers a farmer, creates + approves + disburses a Grow Pack, fires drought trigger |
+| `public/wallet-view.tsx` ← (orphan, untouched) | Tier/pool/claims component the user added; not yet integrated |
 
-**Vuna-shaped work to do (rough order):**
-1. Rebrand marketing pages (`/`, `/welcome`, `/about`, `/team`) for Vuna.
-2. Decide which dashboard panels survive into Vuna (probably: notifications, sessions, profile) and which become farmer/co-op-specific (Grow Pack list, drought-payout history, repayment schedule).
-3. Stand up the Vuna-specific routes from the Vuna `app/CLAUDE.md` plan: `/grow-pack/new`, `/insurance`, `/coop/dashboard`, plus the **drought-payout screen** (the marketing screen — build this *first*).
-4. Wire the palette tokens from `../design/palette.md` into the Tailwind 4 `@theme` block in `src/app/globals.css`.
-5. Strip or replace the agent-backend API routes — Vuna does not need a Python coaching pipeline.
-6. Add Solana wallet adapters (Phantom for the demo / co-op staff; Magic.link or Privy for farmers — they must never see a seed phrase).
+## Two surfaces, one codebase (Vuna intent — current vs. planned)
 
-## Two surfaces, one codebase (Vuna intent)
-
-| Surface | Audience | Mockup |
+| Surface | Audience | Status |
 |-|-|-|
-| `/app/...` | Farmer (phone PWA) | `../design/mockups/mobile.png` |
-| `/coop/...` | Cooperative officer (desktop) | `../design/mockups/web.png` |
+| `/dashboard` | Farmer (mobile-first, dark plum theme) | ✅ Shipped with 5 in-page tabs |
+| `/coop/...` | Cooperative officer (desktop) | ❌ Not started |
 
-We split routes by audience but share components where it makes sense.
+## Rules — non-negotiable (carried over from project root)
 
-## Rules — non-negotiable (carried over from the project root)
+1. **Hide the chain (from farmers).** No "wallet", "blockchain", "stablecoin", "USDC", "Solana" anywhere a farmer sees. Always show Rand. The wallet connect button currently in the dashboard is for *co-op staff / dev / hackathon judges* — the farmer-facing path will use a custodial wallet (Magic.link / Privy) when that's wired.
+2. **Mobile-first.** Tailwind v4, mobile breakpoints first.
+3. **Dark plum + coral-amber theme** is the shipped look. The cream/green/gold palette in `../design/palette.md` is the original brand mockup palette — see root `CLAUDE.md` §7 for the split.
+4. **Currency is Rand.** All amounts shown to the farmer are in ZAR.
+5. **POPIA.** Never log PII to console or analytics.
+6. **No in-app route hops from inside `/dashboard`.** Everything is a tab.
 
-1. **Hide the chain.** Anywhere a farmer sees, never use the words "wallet", "blockchain", "stablecoin", "USDC", "Solana". Always show Rand.
-2. **Mobile-first.** Tailwind, mobile breakpoints first.
-3. **Use the palette.** Tokens come from `../design/palette.md`.
-4. **Custodial wallet only for the farmer.** Magic.link or similar. Farmer never sees a seed phrase. Phantom is acceptable for the *demo* and for *co-op staff*, not for farmers.
-5. **Currency is Rand.** All amounts shown to the farmer are in ZAR.
-6. **isiZulu and isiXhosa support** is on the roadmap; English-only is acceptable for the hackathon MVP.
-7. **POPIA.** Never log PII to console or analytics.
+## Stack
 
-## Stack (as currently copied)
-
-- **Framework:** Next.js 15.5.15 (App Router), React 19
+- **Framework:** Next.js 15.5 (App Router), React 19
 - **Styling:** Tailwind CSS 4 (via `@tailwindcss/postcss` + `@theme` blocks in `src/app/globals.css`)
-- **Auth + DB:** Supabase (`@supabase/ssr` + `@supabase/supabase-js`)
-- **UI primitives:** shadcn/ui (vendored under `src/components/ui/`), Radix Tabs, lucide-react icons
-- **Animation:** GSAP
-- **Optional AI chat:** CopilotKit + `@a2a-js/sdk` + OpenAI (only `a2a-chat.tsx`)
-- **Package manager:** pnpm (the source uses pnpm; lockfile not copied — run `pnpm install` to regenerate)
+- **Auth + DB:** Supabase (`@supabase/ssr` + `@supabase/supabase-js`) — *optional*, demo mode kicks in when env vars are missing
+- **Solana:** `@solana/web3.js` + `@solana/wallet-adapter-react` + `@solana/wallet-adapter-react-ui` + Phantom adapter
+- **State:** local React state (no global store yet)
+- **Tests:** Vitest 2.1
+- **UI primitives:** shadcn/ui (vendored under `src/components/ui/`)
+- **Icons:** lucide-react
+- **Animation:** GSAP (used by auth-card)
+- **Package manager:** pnpm (deterministic via `pnpm-lock.yaml`)
 
-**Stack still to add for Vuna:**
-- `@solana/web3.js`, `@solana/wallet-adapter-react`, Anchor TS bindings (when `programs/` exists)
-- `react-hook-form` + `zod` for forms
-- `@tanstack/react-query` for server state
-- `next-intl` (when isiZulu / isiXhosa lands)
+## Environment variables
+
+All optional. See `.env.example`. When Supabase keys are missing, the auth pages and dashboard fall back to a demo-mode stub user; real auth resumes once they're populated.
+
+| Var | Use |
+|-|-|
+| `NEXT_PUBLIC_SUPABASE_URL` | Optional — enables real Supabase auth |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Optional |
+| `SUPABASE_SERVICE_ROLE_KEY` | Optional, server-side admin |
+| `NEXT_PUBLIC_SOLANA_RPC` | Optional, defaults to `https://api.devnet.solana.com` |
 
 ## Setup
 
 ```bash
 cd app
 pnpm install
-cp .env.example .env.local      # fill in Supabase keys
+cp .env.example .env.local      # optional — fill in only if you want real auth
 pnpm dev                         # http://localhost:3000
+pnpm test                        # 25 unit tests
 pnpm exec tsc --noEmit           # typecheck
-pnpm build                       # production build
+pnpm build                       # production build (mirrors Vercel)
 ```
 
-### Supabase migrations
+## Devnet demo data
 
-Migrations live in `supabase/migrations/`. Run them in numerical order in your Supabase project's SQL Editor:
-- `20260507_001_notifications.sql`
-- `20260507_002_profiles.sql`
-- `20260507_003_posts.sql`
-- `20260507_004_agent_tables.sql` *(agent-backend only — safe to run, harmless if unused)*
-- `20260507_005_chat_messages.sql` *(agent-backend only)*
-- `20260507_006_pipeline_runs.sql` *(agent-backend only)*
+To create a fresh GrowPack on devnet (registers a farmer, creates a pack, approves, disburses, fires drought trigger at 40% rainfall):
 
-In Auth → Providers, enable email/password (and Google + Apple if `social-auth.tsx` should work).
+```bash
+node scripts/setup-devnet-demo.mjs
+```
 
-## Critical path
+Uses your default Solana CLI keypair (`~/.config/solana/id.json`) as the cooperative. Idempotent — skips steps for accounts that already exist.
 
-Build the **drought-payout screen** first. It's the marketing screen and the hardest visual. If it works, everything else is pattern repetition.
+## Vercel deployment
+
+- **Root Directory:** `app/` (critical — without this, every route 404s)
+- **Framework Preset:** Next.js (auto-detected once Root Directory is set)
+- **Build / Install / Output:** all defaults
+- **Env vars:** none required, optionally `NEXT_PUBLIC_SOLANA_RPC` for a custom RPC
+
+## Critical path remaining
+
+In rough order of impact:
+
+1. **Co-op web dashboard** (`/coop/*`) — entirely unbuilt; that's half the product story per the mockups
+2. **Custodial wallet** (Magic.link / Privy) for the farmer-facing surface
+3. **Marketplace** — placeholder; backend depends on `api/` which hasn't started
+4. **History tab** — currently a "coming soon" stub; should show past Grow Packs from the connected farmer's on-chain history
+5. **Real Supabase project + migrations applied** — currently only demo mode tested
+6. **Encoders for `approve_grow_pack` / `disburse_grow_pack` / `trigger_insurance_payout` / `settle_repayment`** in `lib/vuna/program.ts` — currently inlined in `setup-devnet-demo.mjs`. Needed once the co-op dashboard exists.
