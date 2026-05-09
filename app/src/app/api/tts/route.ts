@@ -118,10 +118,26 @@ function getApiKeyOrError(): { ok: true; key: string } | { ok: false; res: Respo
 }
 
 export async function GET(req: NextRequest) {
+  const sp = req.nextUrl.searchParams;
+
+  // Warm-up ping: callers (e.g. the guided tour) hit `?warmup=1` once
+  // when they're about to start a sequence of speak() calls, so the
+  // Next.js route handler compiles in dev *before* the first <audio>
+  // element starts its 20s play-start timer. Skips the ElevenLabs call
+  // entirely so we don't burn quota.
+  if (sp.get("warmup") === "1") {
+    return new Response(new Uint8Array(0), {
+      status: 200,
+      headers: {
+        "Content-Type": "audio/mpeg",
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
   const auth = getApiKeyOrError();
   if (!auth.ok) return auth.res;
 
-  const sp = req.nextUrl.searchParams;
   const v = validate({
     text: sp.get("text"),
     voiceId: sp.get("voice"),

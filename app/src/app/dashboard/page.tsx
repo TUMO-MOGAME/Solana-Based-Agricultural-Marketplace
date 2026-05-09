@@ -58,6 +58,12 @@ import { readDemoDeals, type DemoDeal } from "@/lib/vuna/demo-deals";
 import { ApplyTab } from "./apply-tab";
 import { MarketplaceTab } from "./marketplace-tab";
 import { ListenButton } from "@/lib/vuna/listen-button";
+import {
+  useDashboardTour,
+  TourMenuItem,
+  TourOverlay,
+  type TourTabId,
+} from "@/lib/vuna/dashboard-tour";
 import styles from "./dashboard.module.css";
 
 type ProfileTab =
@@ -140,6 +146,9 @@ export default function DashboardPage() {
   const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(
     new Set(),
   );
+  // Pulses the Wallet sidebar item while the guided tour is on the
+  // wallet step. Reset by the tour on stop / step-change.
+  const [walletHighlighted, setWalletHighlighted] = useState(false);
   const { publicKey: walletPubkey } = useWallet();
   const { setVisible: setWalletModalVisible } = useWalletModal();
 
@@ -235,6 +244,33 @@ export default function DashboardPage() {
     };
   }, [router]);
 
+  // ─── Guided voice tour ───────────────────────────────────────────
+  // Hook is called *before* the early `if (!user) return null` so React's
+  // hook order stays stable across renders. The hook stores ctx + callbacks
+  // in refs internally, so it tolerates being instantiated with placeholder
+  // values on first render and reading the real ones once user loads.
+  const walletShortForTour = walletPubkey
+    ? `${walletPubkey.toBase58().slice(0, 4)}…${walletPubkey.toBase58().slice(-4)}`
+    : null;
+  const tour = useDashboardTour(
+    {
+      firstName: user?.name?.split(" ")[0] ?? user?.name ?? "",
+      walletShort: walletShortForTour,
+      activePack: {
+        crop: ACTIVE_PACK.crop,
+        region: ACTIVE_PACK.region,
+      },
+    },
+    {
+      onNavigateToTab: (tab: TourTabId) => {
+        setProfileTab(tab as ProfileTab);
+        setLeftOpen(false);
+        setRightOpen(false);
+      },
+      onHighlightWallet: setWalletHighlighted,
+    },
+  );
+
   const handleLogout = async () => {
     if (isSupabaseConfigured()) {
       try {
@@ -292,6 +328,7 @@ export default function DashboardPage() {
       icon: Wallet,
       label: "Wallet",
       meta: walletShort ?? undefined,
+      highlightTour: walletHighlighted,
       onClick: () => {
         if (!walletPubkey) setWalletModalVisible(true);
         // If connected, the meta badge already shows the address — clicking
@@ -337,6 +374,8 @@ export default function DashboardPage() {
               const Meta = meta ? (
                 <span className={styles.menuItemMeta}>{meta}</span>
               ) : null;
+              const highlightTour =
+                "highlightTour" in item ? item.highlightTour : false;
               if ("href" in item && item.href) {
                 return (
                   <Link
@@ -357,7 +396,7 @@ export default function DashboardPage() {
                   type="button"
                   className={`${styles.menuItem} ${
                     "active" in item && item.active ? styles.active : ""
-                  }`}
+                  } ${highlightTour ? styles.tourHighlight : ""}`}
                   onClick={item.onClick}
                 >
                   <Icon />
@@ -366,6 +405,13 @@ export default function DashboardPage() {
                 </button>
               );
             })}
+            {/* Voice tour — sits under Marketplace per the design ask. Plays
+                a short narration and drives tab navigation as it speaks. */}
+            <TourMenuItem
+              tour={tour}
+              className={styles.menuItem}
+              metaClassName={styles.menuItemMeta}
+            />
           </nav>
         </div>
 
@@ -655,6 +701,9 @@ export default function DashboardPage() {
         onClick={closeDrawers}
         aria-hidden="true"
       />
+
+      {/* Floating progress panel shown only while the guided tour is running */}
+      <TourOverlay tour={tour} />
     </div>
   );
 }

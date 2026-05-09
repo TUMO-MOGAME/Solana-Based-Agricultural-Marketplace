@@ -22,7 +22,13 @@ export type VoiceRequest = {
 // this many ms, we treat it as a hung stream and reject. Without this
 // the button can spin indefinitely if the browser is unhappy with the
 // stream (e.g. waiting forever for a Range it can't get).
-const PLAY_START_TIMEOUT_MS = 12_000;
+//
+// 20s leaves headroom for two slow-path scenarios:
+//   1. Next.js dev cold-compiling /api/tts on first hit (~10–16s).
+//      Callers (tour) should also call warmupTts() up-front so this
+//      headroom is rarely consumed.
+//   2. ElevenLabs free tier occasionally taking >5s on first request.
+const PLAY_START_TIMEOUT_MS = 20_000;
 
 // Print every audio lifecycle event when set. Flip to true to debug
 // silent playback failures (e.g. tab muted, output device routing,
@@ -232,4 +238,25 @@ export async function speak(req: VoiceRequest): Promise<VoicePlayback> {
 export function stopSpeaking() {
   currentStop?.();
   currentStop = null;
+}
+
+/** Compile the /api/tts route handler (a no-op in production, but in dev
+ *  the first hit can take 10–16s while Next.js compiles). Best-effort —
+ *  swallows errors. Call this before a sequence of speak() calls when
+ *  you don't want the first step to absorb the cold-start latency. */
+export async function warmupTts(): Promise<void> {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 30_000);
+    const res = await fetch("/api/tts?warmup=1", {
+      signal: ctrl.signal,
+      cache: "no-store",
+    });
+    clearTimeout(timer);
+    // Free the connection — body is empty but the stream needs to close.
+    res.body?.cancel().catch(() => {});
+  } catch {
+    // Best-effort: if warmup fails, the next real speak() will still try
+    // and surface its own error. We don't want to block tour start on it.
+  }
 }
