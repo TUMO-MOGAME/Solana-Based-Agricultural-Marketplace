@@ -375,6 +375,55 @@ pub struct Deal {
 }
 
 // ============================================================================
+//  Marketplace — BuyerOffer (Phase 3)
+// ============================================================================
+//
+// A BuyerOffer is a buyer-posted commitment to purchase up to N tons of
+// a crop in a specific region by a deadline, at a fixed Rand-per-ton
+// price. Stored on-chain so any farmer can see it via getProgramAccounts.
+//
+// PDA seeds: ["offer", buyer, offer_id_le_bytes]. Multiple concurrent
+// offers from the same buyer are supported by varying offer_id.
+//
+// `crop`, `region`, and `buyer_type` are u8 enum codes (zero-cost
+// representation, mirrored in the TS decoder). `buyer_name` is a
+// fixed-size 32-byte buffer, null-padded ASCII — keeps the account
+// fixed-size for simpler InitSpace and Borsh decoding.
+//
+// To take an offer down, the buyer signs `cancel_buyer_offer` which
+// closes the PDA and refunds rent.
+
+#[account]
+#[derive(InitSpace)]
+pub struct BuyerOffer {
+    /// Buyer who posted the offer. Pays rent. Only this signer can cancel.
+    pub buyer: Pubkey,
+    /// Buyer-chosen identifier — lets the same buyer post multiple offers.
+    pub offer_id: u64,
+    /// Crop enum: 0=Maize, 1=Wheat, 2=Soybean, 3=Sorghum, 4=Beans.
+    pub crop: u8,
+    /// Region enum (mirrors core/types.ts Region enum).
+    pub region: u8,
+    /// Buyer-type enum: 0=Mill, 1=Retailer, 2=Co-op, 3=Brewer, 4=Exporter.
+    pub buyer_type: u8,
+    /// Maximum tons the buyer is willing to purchase under this offer.
+    pub max_quantity_tons: u32,
+    /// Direct price in whole-Rand per ton.
+    pub price_per_ton_zar: u64,
+    /// What a typical local middleman would pay — surfaced as the
+    /// "+X% vs middleman" badge in the marketplace UI.
+    pub middleman_price_zar: u64,
+    /// Unix timestamp when the offer was posted.
+    pub created_at: i64,
+    /// Unix timestamp when the offer should be considered expired.
+    pub expires_at: i64,
+    /// Display name (e.g. "Lebone Mills"), null-padded ASCII, 32 bytes.
+    pub buyer_name: [u8; 32],
+    /// PDA bump.
+    pub bump: u8,
+}
+
+// ============================================================================
 //  Tests for FarmerAccount credit-score logic.
 //  Mirrors tests/unit/credit-score.test.ts one-for-one.
 // ============================================================================

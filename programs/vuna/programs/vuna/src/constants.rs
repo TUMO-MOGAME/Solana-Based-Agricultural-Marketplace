@@ -7,6 +7,7 @@ use anchor_lang::prelude::*;
 pub const FARMER_SEED: &[u8] = b"farmer";
 pub const GROW_PACK_SEED: &[u8] = b"pack";
 pub const DEAL_SEED: &[u8] = b"deal";
+pub const OFFER_SEED: &[u8] = b"offer";
 
 // ---- Credit-score parameters (mirror core/credit-score.ts) ----
 #[constant]

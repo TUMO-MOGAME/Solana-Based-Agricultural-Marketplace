@@ -19,6 +19,8 @@ pub mod trigger_insurance_payout;
 pub mod settle_repayment;
 pub mod create_deal;
 pub mod confirm_and_release;
+pub mod post_buyer_offer;
+pub mod cancel_buyer_offer;
 
 pub use register_farmer::*;
 pub use request_grow_pack::*;
@@ -28,3 +30,5 @@ pub use trigger_insurance_payout::*;
 pub use settle_repayment::*;
 pub use create_deal::*;
 pub use confirm_and_release::*;
+pub use post_buyer_offer::*;
+pub use cancel_buyer_offer::*;

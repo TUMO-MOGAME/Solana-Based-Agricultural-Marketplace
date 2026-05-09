@@ -25,6 +25,7 @@ export const PROGRAM_ID = new PublicKey(
 const FARMER_SEED = Buffer.from("farmer");
 const GROW_PACK_SEED = Buffer.from("pack");
 const DEAL_SEED = Buffer.from("deal");
+const OFFER_SEED = Buffer.from("offer");
 
 // ============================================================================
 //  Connection
@@ -81,6 +82,22 @@ export function dealPda(
   idBuf.writeBigUInt64LE(dealId, 0);
   return PublicKey.findProgramAddressSync(
     [DEAL_SEED, buyer.toBuffer(), farmer.toBuffer(), idBuf],
+    PROGRAM_ID,
+  );
+}
+
+/**
+ * Derive the BuyerOffer PDA for (buyer, offer_id). Phase 3 marketplace.
+ * Mirrors `programs/vuna/programs/vuna/src/instructions/post_buyer_offer.rs`.
+ */
+export function buyerOfferPda(
+  buyer: PublicKey,
+  offerId: bigint,
+): [PublicKey, number] {
+  const idBuf = Buffer.alloc(8);
+  idBuf.writeBigUInt64LE(offerId, 0);
+  return PublicKey.findProgramAddressSync(
+    [OFFER_SEED, buyer.toBuffer(), idBuf],
     PROGRAM_ID,
   );
 }
@@ -324,10 +341,16 @@ const DISCRIMINATORS = {
   // Marketplace (Phase 2)
   create_deal: new Uint8Array([198, 212, 144, 151, 97, 56, 149, 113]),
   confirm_and_release: new Uint8Array([136, 35, 54, 211, 241, 17, 40, 188]),
+  // Marketplace (Phase 3)
+  post_buyer_offer: new Uint8Array([230, 36, 254, 173, 171, 182, 172, 92]),
+  cancel_buyer_offer: new Uint8Array([86, 233, 63, 2, 145, 114, 3, 88]),
 } as const;
 
 /** Anchor account-discriminator for the Deal account type. */
 const DEAL_ACCOUNT_DISC = new Uint8Array([125, 223, 160, 234, 71, 162, 182, 219]);
+
+/** Anchor account-discriminator for the BuyerOffer account type. */
+const BUYER_OFFER_ACCOUNT_DISC = new Uint8Array([124, 127, 189, 174, 44, 105, 164, 195]);
 
 /** Default service-fee bps (10%) — matches `core/grow-pack.ts`. */
 export const SERVICE_FEE_BPS_DEFAULT = 1000;
@@ -534,6 +557,215 @@ export function makeConfirmAndReleaseIx(
     keys: [
       { pubkey: args.deal, isSigner: false, isWritable: true },
       { pubkey: args.farmer, isSigner: true, isWritable: true },
+    ],
+    data: Buffer.from(data),
+  });
+}
+
+// ============================================================================
+//  Marketplace — BuyerOffer (Phase 3) + post + cancel
+//
+//  Mirrors `programs/vuna/programs/vuna/src/state.rs::BuyerOffer` and the
+//  two instruction modules at instructions/{post_buyer_offer,cancel_buyer_offer}.rs
+// ============================================================================
+
+/** Crop enum codes — must match the BuyerOffer.crop u8 stored on-chain. */
+export const CROP_LABELS = ["Maize", "Wheat", "Soybean", "Sorghum", "Beans"] as const;
+export type CropLabel = (typeof CROP_LABELS)[number];
+
+/** Region enum codes — same as core/types.ts Region order. */
+export const REGION_LABELS = [
+  "Eastern Cape",
+  "KwaZulu-Natal",
+  "Limpopo",
+  "Mpumalanga",
+  "Free State",
+  "North West",
+  "Western Cape",
+  "Northern Cape",
+  "Gauteng",
+] as const;
+export type RegionLabel = (typeof REGION_LABELS)[number];
+
+/** Buyer-type enum codes — must match BuyerOffer.buyer_type. */
+export const BUYER_TYPE_LABELS = [
+  "Mill",
+  "Retailer",
+  "Co-op",
+  "Brewer",
+  "Exporter",
+] as const;
+export type BuyerTypeLabel = (typeof BUYER_TYPE_LABELS)[number];
+
+export interface BuyerOffer {
+  buyer: PublicKey;
+  offerId: bigint;
+  crop: number;
+  region: number;
+  buyerType: number;
+  maxQuantityTons: number;
+  pricePerTonZar: bigint;
+  middlemanPriceZar: bigint;
+  createdAt: bigint;
+  expiresAt: bigint;
+  buyerName: string;
+  bump: number;
+}
+
+/** Borsh layout: 32 + 8 + 1 + 1 + 1 + 4 + 8 + 8 + 8 + 8 + 32 + 1 = 112 bytes. */
+export function decodeBuyerOffer(data: Uint8Array): BuyerOffer {
+  if (data.length < 8 + 112) {
+    throw new Error(`BuyerOffer account too small: ${data.length} bytes`);
+  }
+  for (let i = 0; i < 8; i++) {
+    if (data[i] !== BUYER_OFFER_ACCOUNT_DISC[i]) {
+      throw new Error("BuyerOffer: account-discriminator mismatch");
+    }
+  }
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  let o = 8;
+  const buyer = new PublicKey(data.slice(o, o + 32)); o += 32;
+  const offerId = dv.getBigUint64(o, true); o += 8;
+  const crop = dv.getUint8(o); o += 1;
+  const region = dv.getUint8(o); o += 1;
+  const buyerType = dv.getUint8(o); o += 1;
+  const maxQuantityTons = dv.getUint32(o, true); o += 4;
+  const pricePerTonZar = dv.getBigUint64(o, true); o += 8;
+  const middlemanPriceZar = dv.getBigUint64(o, true); o += 8;
+  const createdAt = dv.getBigInt64(o, true); o += 8;
+  const expiresAt = dv.getBigInt64(o, true); o += 8;
+  // Decode the 32-byte name buffer as null-padded ASCII/UTF-8.
+  const nameBytes = data.slice(o, o + 32); o += 32;
+  const nullIdx = nameBytes.indexOf(0);
+  const trimmed = nullIdx >= 0 ? nameBytes.slice(0, nullIdx) : nameBytes;
+  const buyerName = new TextDecoder().decode(trimmed);
+  const bump = dv.getUint8(o);
+  return {
+    buyer, offerId, crop, region, buyerType,
+    maxQuantityTons, pricePerTonZar, middlemanPriceZar,
+    createdAt, expiresAt, buyerName, bump,
+  };
+}
+
+export async function fetchBuyerOffer(
+  connection: Connection,
+  offer: PublicKey,
+): Promise<BuyerOffer | null> {
+  const info = await connection.getAccountInfo(offer);
+  if (!info) return null;
+  return decodeBuyerOffer(info.data);
+}
+
+/**
+ * Fetch every BuyerOffer currently posted to the program. Uses
+ * getProgramAccounts and filters client-side by the BuyerOffer
+ * account discriminator.
+ *
+ * Wasteful at scale but fine for a hackathon demo with a handful of
+ * accounts. Production would either run an indexer or use a memcmp
+ * filter on the discriminator (requires bs58 encoding the bytes).
+ */
+export async function fetchAllBuyerOffers(
+  connection: Connection,
+): Promise<{ address: PublicKey; offer: BuyerOffer }[]> {
+  const accounts = await connection.getProgramAccounts(PROGRAM_ID);
+  const out: { address: PublicKey; offer: BuyerOffer }[] = [];
+  for (const { pubkey, account } of accounts) {
+    if (account.data.length < 8 + 112) continue;
+    let match = true;
+    for (let i = 0; i < 8; i++) {
+      if (account.data[i] !== BUYER_OFFER_ACCOUNT_DISC[i]) {
+        match = false;
+        break;
+      }
+    }
+    if (!match) continue;
+    try {
+      out.push({ address: pubkey, offer: decodeBuyerOffer(account.data) });
+    } catch {
+      /* malformed — skip */
+    }
+  }
+  return out;
+}
+
+/** Encode an ASCII display name into a fixed-size 32-byte null-padded buffer. */
+export function encodeBuyerName(name: string): Uint8Array {
+  const buf = new Uint8Array(32);
+  const bytes = new TextEncoder().encode(name);
+  buf.set(bytes.slice(0, 32), 0);
+  return buf;
+}
+
+// ---- post_buyer_offer -------------------------------------------------------
+
+export interface PostBuyerOfferArgs {
+  buyer: PublicKey;
+  offerId: bigint;
+  crop: number;
+  region: number;
+  buyerType: number;
+  maxQuantityTons: number;
+  pricePerTonZar: bigint;
+  middlemanPriceZar: bigint;
+  expiresAt: bigint;
+  buyerName: string;
+}
+
+export function makePostBuyerOfferIx(
+  args: PostBuyerOfferArgs,
+): TransactionInstruction {
+  const [offer] = buyerOfferPda(args.buyer, args.offerId);
+
+  // disc(8) + offer_id(8) + crop(1) + region(1) + buyer_type(1)
+  // + max_qty(4) + price(8) + middleman(8) + expires_at(8)
+  // + buyer_name(32) = 79 bytes
+  const data = new Uint8Array(79);
+  const dv = new DataView(data.buffer);
+  data.set(DISCRIMINATORS.post_buyer_offer, 0);
+  let o = 8;
+  dv.setBigUint64(o, args.offerId, true); o += 8;
+  dv.setUint8(o, args.crop & 0xff); o += 1;
+  dv.setUint8(o, args.region & 0xff); o += 1;
+  dv.setUint8(o, args.buyerType & 0xff); o += 1;
+  dv.setUint32(o, args.maxQuantityTons, true); o += 4;
+  dv.setBigUint64(o, args.pricePerTonZar, true); o += 8;
+  dv.setBigUint64(o, args.middlemanPriceZar, true); o += 8;
+  dv.setBigInt64(o, args.expiresAt, true); o += 8;
+  data.set(encodeBuyerName(args.buyerName), o);
+
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: offer, isSigner: false, isWritable: true },
+      { pubkey: args.buyer, isSigner: true, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from(data),
+  });
+}
+
+// ---- cancel_buyer_offer -----------------------------------------------------
+
+export interface CancelBuyerOfferArgs {
+  /** PDA of the offer being cancelled. */
+  offer: PublicKey;
+  /** Original buyer who posted it — must sign and receives rent refund. */
+  buyer: PublicKey;
+}
+
+export function makeCancelBuyerOfferIx(
+  args: CancelBuyerOfferArgs,
+): TransactionInstruction {
+  // disc(8) + no args = 8 bytes
+  const data = new Uint8Array(8);
+  data.set(DISCRIMINATORS.cancel_buyer_offer, 0);
+
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: args.offer, isSigner: false, isWritable: true },
+      { pubkey: args.buyer, isSigner: true, isWritable: true },
     ],
     data: Buffer.from(data),
   });

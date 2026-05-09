@@ -35,4 +35,14 @@ pub enum VunaError {
 
     #[msg("Buyer and farmer must be different accounts")]
     SelfDeal,
+
+    // ---- Marketplace (Phase 3 — BuyerOffer) ----
+    #[msg("Offer price (R/ton) must be greater than zero")]
+    InvalidOfferPrice,
+
+    #[msg("Offer max quantity (tons) must be greater than zero")]
+    InvalidOfferQuantity,
+
+    #[msg("Offer expiry must be in the future")]
+    InvalidOfferExpiry,
 }

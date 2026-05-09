@@ -95,4 +95,37 @@ pub mod vuna {
     pub fn confirm_and_release(ctx: Context<ConfirmAndRelease>) -> Result<()> {
         instructions::confirm_and_release::handler(ctx)
     }
+
+    // ---- Marketplace (Phase 3 — BuyerOffer) ----
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn post_buyer_offer(
+        ctx: Context<PostBuyerOffer>,
+        offer_id: u64,
+        crop: u8,
+        region: u8,
+        buyer_type: u8,
+        max_quantity_tons: u32,
+        price_per_ton_zar: u64,
+        middleman_price_zar: u64,
+        expires_at: i64,
+        buyer_name: [u8; 32],
+    ) -> Result<()> {
+        instructions::post_buyer_offer::handler(
+            ctx,
+            offer_id,
+            crop,
+            region,
+            buyer_type,
+            max_quantity_tons,
+            price_per_ton_zar,
+            middleman_price_zar,
+            expires_at,
+            buyer_name,
+        )
+    }
+
+    pub fn cancel_buyer_offer(ctx: Context<CancelBuyerOffer>) -> Result<()> {
+        instructions::cancel_buyer_offer::handler(ctx)
+    }
 }
