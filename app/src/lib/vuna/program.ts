@@ -505,6 +505,45 @@ export async function fetchDeal(
   return decodeDeal(info.data);
 }
 
+/**
+ * Find every live Deal PDA where the given wallet is either buyer or
+ * farmer. Used by the marketplace tab to recover deal state in a fresh
+ * browser (no localStorage), or when localStorage is split across
+ * machines / browsers / Phantom profiles.
+ *
+ * Wasteful at scale (scans every program-owned account, filters in JS)
+ * but fine for hackathon devnet load. Production would either use a
+ * memcmp filter on (discriminator + buyer/farmer offset) or run an
+ * indexer.
+ */
+export async function fetchDealsByWallet(
+  connection: Connection,
+  wallet: PublicKey,
+): Promise<{ address: PublicKey; deal: Deal }[]> {
+  const accounts = await connection.getProgramAccounts(PROGRAM_ID);
+  const out: { address: PublicKey; deal: Deal }[] = [];
+  for (const { pubkey, account } of accounts) {
+    if (account.data.length < 8 + 89) continue;
+    let match = true;
+    for (let i = 0; i < 8; i++) {
+      if (account.data[i] !== DEAL_ACCOUNT_DISC[i]) {
+        match = false;
+        break;
+      }
+    }
+    if (!match) continue;
+    try {
+      const deal = decodeDeal(account.data);
+      if (deal.buyer.equals(wallet) || deal.farmer.equals(wallet)) {
+        out.push({ address: pubkey, deal });
+      }
+    } catch {
+      /* malformed Deal — skip */
+    }
+  }
+  return out;
+}
+
 // ---- create_deal ------------------------------------------------------------
 
 export interface CreateDealArgs {

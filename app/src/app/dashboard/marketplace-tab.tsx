@@ -40,6 +40,7 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, Transaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import {
   fetchDeal,
+  fetchDealsByWallet,
   makeConfirmAndReleaseIx,
   makeCreateDealIx,
   makePostBuyerOfferIx,
@@ -100,13 +101,24 @@ export function MarketplaceTab() {
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   // Load deals + offers in parallel.
+  //
+  // Deals come from two sources, merged by PDA:
+  //   1. localStorage (fast, includes historical released deals) — but
+  //      only present in the browser/profile that did the create_deal.
+  //   2. On-chain scan via getProgramAccounts, filtered to deals where
+  //      the connected wallet is buyer or farmer — works in any browser.
+  //
+  // Merging means: a fresh Phantom on a different machine can still see
+  // active deals it's a party to, *and* the original browser can still
+  // see released history that's no longer on-chain.
   useEffect(() => {
     let cancelled = false;
     setOfferLoadState("loading");
     setOfferError("");
 
     (async () => {
-      const [enrichedDeals, fetchedOffers] = await Promise.all([
+      const [cachedEnriched, scanned, fetchedOffers] = await Promise.all([
+        // 1. localStorage cached deals + their current on-chain state
         (async () => {
           const cached = readDemoDeals();
           return Promise.all(
@@ -120,6 +132,17 @@ export function MarketplaceTab() {
             }),
           );
         })(),
+        // 2. On-chain scan for the connected wallet
+        (async () => {
+          if (!publicKey) return [];
+          try {
+            return await fetchDealsByWallet(connection, publicKey);
+          } catch {
+            // Network hiccup — fall back to whatever localStorage gives us.
+            return [];
+          }
+        })(),
+        // 3. All buyer offers
         (async () => {
           try {
             return { ok: true as const, rows: await fetchAllBuyerOffers(connection) };
@@ -133,14 +156,39 @@ export function MarketplaceTab() {
       ]);
 
       if (cancelled) return;
-      setDeals(enrichedDeals);
+
+      // Merge by PDA. localStorage entries take precedence (they may have
+      // a buyerOfferLabel the on-chain account doesn't carry).
+      const byPda = new Map<string, ActiveDeal>();
+      for (const row of cachedEnriched) {
+        byPda.set(row.cached.pda, row);
+      }
+      for (const { address, deal } of scanned) {
+        const pdaStr = address.toBase58();
+        if (byPda.has(pdaStr)) continue;
+        byPda.set(pdaStr, {
+          cached: {
+            pda: pdaStr,
+            buyer: deal.buyer.toBase58(),
+            farmer: deal.farmer.toBase58(),
+            dealId: deal.dealId.toString(),
+            amountLamports: deal.amountLamports.toString(),
+            createdAtMs: Number(deal.createdAt) * 1000,
+          },
+          onChain: deal,
+        });
+      }
+      // Sort newest first.
+      const merged = Array.from(byPda.values()).sort(
+        (a, b) => b.cached.createdAtMs - a.cached.createdAtMs,
+      );
+      setDeals(merged);
+
       if (fetchedOffers.ok) {
-        // Drop expired offers from the visible list.
         const now = Math.floor(Date.now() / 1000);
         const live = fetchedOffers.rows.filter(
           (r) => Number(r.offer.expiresAt) > now,
         );
-        // Sort newest first.
         live.sort((a, b) => Number(b.offer.createdAt - a.offer.createdAt));
         setOffers(live);
         setOfferLoadState("ready");
