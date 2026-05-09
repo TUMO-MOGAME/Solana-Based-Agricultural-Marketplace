@@ -49,8 +49,12 @@ import {
   farmerIdHashFrom,
   farmerPda,
   packPda,
+  fetchDeal,
+  fetchDealsByWallet,
   type GrowPack,
+  type Deal,
 } from "@/lib/vuna/program";
+import { readDemoDeals, type DemoDeal } from "@/lib/vuna/demo-deals";
 import { ApplyTab } from "./apply-tab";
 import { MarketplaceTab } from "./marketplace-tab";
 import { ListenButton } from "@/lib/vuna/listen-button";
@@ -1318,16 +1322,277 @@ function HistoryTab({ onViewPack }: { onViewPack: () => void }) {
             </span>
           </div>
         </div>
+        {/* Even without Grow Packs, surface marketplace deals if any. */}
+        <DealHistorySection />
       </div>
     );
   }
 
   return (
     <div className={styles.timelineSingle}>
+      <SectionHeader>Past Grow Packs</SectionHeader>
       <div style={{ display: "grid", gap: 12 }}>
         {rows.map((row) => (
           <HistoryCard key={row.address} row={row} onView={onViewPack} />
         ))}
+      </div>
+      <DealHistorySection />
+    </div>
+  );
+}
+
+function SectionHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        fontSize: 11,
+        letterSpacing: "0.08em",
+        textTransform: "uppercase",
+        color: "rgba(255, 230, 210, 0.55)",
+        fontWeight: 700,
+        padding: "0 4px",
+        marginTop: 8,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+// ============================================================================
+//  Deal history (Phase 2/3 marketplace deals)
+// ============================================================================
+//
+// Reads from two sources:
+//  1. localStorage cache (`vuna.demoDeals`) — survives PDA closure on
+//     release, so this is where released-deal records live.
+//  2. On-chain scan via `fetchDealsByWallet` — finds active deals where
+//     the connected wallet is buyer or farmer, even on a fresh browser
+//     where localStorage is empty.
+//
+// Merged by PDA. Empty / no-wallet / error states render NOTHING (vs.
+// a placeholder card) so the Past-Grow-Packs section sits cleanly above.
+
+type DealHistoryRow = {
+  cached: DemoDeal;
+  onChain: Deal | null;
+};
+
+function DealHistorySection() {
+  const { publicKey } = useWallet();
+  const [rows, setRows] = useState<DealHistoryRow[]>([]);
+  const [state, setState] = useState<
+    "loading" | "ready" | "no-wallet" | "empty" | "error"
+  >("loading");
+
+  useEffect(() => {
+    if (!publicKey) {
+      setState("no-wallet");
+      setRows([]);
+      return;
+    }
+    let cancelled = false;
+    setState("loading");
+    (async () => {
+      try {
+        const conn = getConnection();
+        const me = publicKey.toBase58();
+        const myCached = readDemoDeals().filter(
+          (d) => d.buyer === me || d.farmer === me,
+        );
+        const [enrichedCached, scanned] = await Promise.all([
+          Promise.all(
+            myCached.map(async (d) => {
+              try {
+                const onChain = await fetchDeal(conn, new PublicKey(d.pda));
+                return { cached: d, onChain };
+              } catch {
+                return { cached: d, onChain: null };
+              }
+            }),
+          ),
+          (async () => {
+            try {
+              return await fetchDealsByWallet(conn, publicKey);
+            } catch {
+              return [];
+            }
+          })(),
+        ]);
+        if (cancelled) return;
+
+        const byPda = new Map<string, DealHistoryRow>();
+        for (const r of enrichedCached) byPda.set(r.cached.pda, r);
+        for (const { address, deal } of scanned) {
+          const pdaStr = address.toBase58();
+          if (byPda.has(pdaStr)) continue;
+          byPda.set(pdaStr, {
+            cached: {
+              pda: pdaStr,
+              buyer: deal.buyer.toBase58(),
+              farmer: deal.farmer.toBase58(),
+              dealId: deal.dealId.toString(),
+              amountLamports: deal.amountLamports.toString(),
+              createdAtMs: Number(deal.createdAt) * 1000,
+            },
+            onChain: deal,
+          });
+        }
+        const all = Array.from(byPda.values()).sort(
+          (a, b) => b.cached.createdAtMs - a.cached.createdAtMs,
+        );
+        setRows(all);
+        setState(all.length > 0 ? "ready" : "empty");
+      } catch {
+        if (!cancelled) setState("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [publicKey]);
+
+  // Hide the section entirely when there's nothing to show, instead of
+  // rendering a placeholder. Keeps the History tab clean for users who
+  // haven't touched the marketplace yet.
+  if (state !== "ready" || !publicKey) return null;
+
+  return (
+    <>
+      <SectionHeader>Marketplace deals</SectionHeader>
+      <div style={{ display: "grid", gap: 12 }}>
+        {rows.map((row) => (
+          <DealHistoryCard
+            key={row.cached.pda}
+            row={row}
+            myWallet={publicKey.toBase58()}
+          />
+        ))}
+      </div>
+    </>
+  );
+}
+
+function DealHistoryCard({
+  row,
+  myWallet,
+}: {
+  row: DealHistoryRow;
+  myWallet: string;
+}) {
+  const { cached, onChain } = row;
+  const released = onChain === null;
+  const isBuyer = cached.buyer === myWallet;
+
+  const lamports = onChain
+    ? Number(onChain.amountLamports)
+    : Number(BigInt(cached.amountLamports));
+  const sol = lamports / 1_000_000_000;
+  const randApprox = Math.round(sol * 1000);
+
+  const statusLabel = released ? "Released" : "Active";
+  const statusColor = released ? "#7adf7d" : "#ffb86b";
+
+  const sideCopy = isBuyer
+    ? released
+      ? "You bought — funds delivered."
+      : "You committed funds — awaiting farmer confirmation."
+    : released
+      ? "You sold — funds received."
+      : "Locked for you — confirm in the Marketplace tab."
+
+  const created = new Date(cached.createdAtMs).toLocaleDateString("en-ZA", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+  return (
+    <div className={styles.box}>
+      <div className={styles.boxBody}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+            marginBottom: 8,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 800,
+                color: "rgba(255, 245, 230, 0.95)",
+                marginBottom: 4,
+              }}
+            >
+              {cached.buyerOfferLabel ?? "Marketplace deal"}
+            </div>
+            <div
+              style={{
+                fontSize: 10,
+                fontFamily: "var(--font-geist-mono), ui-monospace, monospace",
+                color: "rgba(255, 230, 210, 0.45)",
+                display: "grid",
+                gap: 2,
+              }}
+            >
+              <div>buyer  {shortPackId(cached.buyer)}</div>
+              <div>farmer {shortPackId(cached.farmer)}</div>
+              <div>deal   {shortPackId(cached.pda)}</div>
+            </div>
+          </div>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: statusColor,
+              padding: "3px 9px",
+              borderRadius: 999,
+              border: `1px solid ${statusColor}55`,
+              background: `${statusColor}14`,
+              flexShrink: 0,
+            }}
+          >
+            {statusLabel}
+          </span>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: 8,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 16,
+              fontWeight: 800,
+              color: "rgba(255, 245, 230, 0.95)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            ≈ R {randApprox} ({sol.toFixed(3)} SOL)
+          </span>
+          <span style={{ fontSize: 11, color: "rgba(255, 230, 210, 0.45)" }}>
+            {created}
+          </span>
+        </div>
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 11,
+            color: "rgba(255, 230, 210, 0.6)",
+            lineHeight: 1.45,
+          }}
+        >
+          {sideCopy}
+        </div>
       </div>
     </div>
   );

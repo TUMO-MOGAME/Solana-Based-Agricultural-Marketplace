@@ -60,7 +60,6 @@ import {
 import {
   readDemoDeals,
   addDemoDeal,
-  removeDemoDeal,
   randomDealId,
   type DemoDeal,
 } from "@/lib/vuna/demo-deals";
@@ -219,6 +218,15 @@ export function MarketplaceTab() {
       if (!publicKey || !sendTransaction) {
         throw new Error("Connect a wallet first.");
       }
+
+      // Persist the deal record to *this* browser's localStorage BEFORE
+      // the on-chain PDA closes — otherwise the farmer browser (which
+      // only learned about the deal from an on-chain scan) loses the
+      // record entirely once `confirm_and_release` closes the PDA.
+      // No-op when the record is already present (addDemoDeal is
+      // idempotent on `pda`).
+      addDemoDeal(active.cached);
+
       const ix = makeConfirmAndReleaseIx({
         deal: new PublicKey(active.cached.pda),
         farmer: publicKey,
@@ -226,7 +234,11 @@ export function MarketplaceTab() {
       const tx = new Transaction().add(ix);
       const sig = await sendTransaction(tx, connection);
       await connection.confirmTransaction(sig, "confirmed");
-      removeDemoDeal(active.cached.pda);
+
+      // Deliberately do NOT call removeDemoDeal — keep the record so
+      // both Marketplace ("Released" card) and the History tab can show
+      // it. The on-chain PDA is gone, so subsequent fetchDeal calls
+      // return null and the card renders as released.
       refresh();
       return sig;
     },
