@@ -15,9 +15,9 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Sprout, MapPin, Loader2, ArrowRight } from "lucide-react";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { useConnection } from "@solana/wallet-adapter-react";
 import { Transaction, type TransactionSignature } from "@solana/web3.js";
+import { useFarmerWallet } from "@/lib/vuna/farmer-wallet";
 import {
   farmerIdHashFrom,
   makeRegisterFarmerIx,
@@ -66,8 +66,8 @@ export interface ApplyTabProps {
 
 export function ApplyTab({ onSuccess, onNavigateToInsurance }: ApplyTabProps) {
   const { connection } = useConnection();
-  const { publicKey, sendTransaction, connecting } = useWallet();
-  const { setVisible: setWalletModalVisible } = useWalletModal();
+  const { publicKey, sendTransaction, connecting, connect: connectWallet } =
+    useFarmerWallet();
 
   const [crop, setCrop] = useState("Maize");
   const [hectares, setHectares] = useState("2.0");
@@ -109,7 +109,7 @@ export function ApplyTab({ onSuccess, onNavigateToInsurance }: ApplyTabProps) {
 
     if (!publicKey) {
       setError("Connect your wallet first to submit on-chain.");
-      setWalletModalVisible(true);
+      void connectWallet();
       return;
     }
 

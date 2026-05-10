@@ -31,10 +31,10 @@ export type TourTabId =
 export type TourContext = {
   firstName: string;
   walletShort: string | null;
-  activePack: {
-    crop: string;
-    region: string;
-  };
+  /** The connected farmer's province (label, e.g. "Eastern Cape"), if
+   *  they're already registered on-chain. Null when the wallet has no
+   *  FarmerAccount yet — in that case the tour uses a generic line. */
+  region: string | null;
 };
 
 type Step = {
@@ -58,7 +58,9 @@ const TOUR_STEPS: Step[] = [
     label: "Home",
     tab: "active",
     text: (c) =>
-      `This is your home. Your ${c.activePack.crop.toLowerCase()} crop in ${c.activePack.region}, the weather for the week, and your repayment date — everything for this season at one glance.`,
+      c.region
+        ? `This is your home. Your current Grow Pack in ${c.region}, your repayment date, and your credit history — everything for this season at one glance.`
+        : `This is your home. Once you apply for a Grow Pack, your current season, repayment date, and credit history all appear here at one glance.`,
   },
   {
     id: "apply",

@@ -34,9 +34,8 @@ import {
   CalendarDays,
   Wallet,
 } from "lucide-react";
-import { useWallet } from "@solana/wallet-adapter-react";
-import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { PublicKey } from "@solana/web3.js";
+import { useFarmerWallet } from "@/lib/vuna/farmer-wallet";
 import {
   createSupabaseBrowserClient,
   isSupabaseConfigured,
@@ -45,13 +44,16 @@ import { readDemoUser, clearDemoUser } from "@/lib/vuna/demo-user";
 import { WalletButton } from "@/lib/vuna/wallet-button";
 import {
   fetchGrowPack,
+  fetchFarmerAccount,
   getConnection,
   farmerIdHashFrom,
   farmerPda,
   packPda,
   fetchDeal,
   fetchDealsByWallet,
+  REGION_LABELS,
   type GrowPack,
+  type FarmerAccount,
   type Deal,
 } from "@/lib/vuna/program";
 import { readDemoDeals, type DemoDeal } from "@/lib/vuna/demo-deals";
@@ -93,49 +95,118 @@ const DEMO_PACK_ADDRESS = "AShtE5mNczJqoLYSQzASMHb5vLiAb3RSavPoLW4NyzAd";
 
 type DashUser = { name: string; email: string };
 
-// ─── Hardcoded demo data — replace with real on-chain reads once a known
-//     pack PDA is deployed and the wallet adapter is wired. ───────────────
-const ACTIVE_PACK = {
-  crop: "Maize",
-  hectares: 2.0,
-  region: "Eastern Cape",
-  dayOfSeason: 60,
-  totalDays: 120,
-  bundle: "R 1,655",
-  repayAtHarvest: "R 1,820",
-  weather: { tempC: 22, conditions: "Light rain expected Thu", monthMm: 47, status: "normal" as const },
-  credit: { score: 720, label: "Good standing", trend: "+40 since last season" },
-  checklist: [
-    { label: "Seeds delivered", done: true },
-    { label: "Fertilizer delivered", done: true },
-    { label: "Drought cover active", done: true },
-    { label: "Harvest scheduled", done: false },
-  ],
+/** Snapshot of the connected farmer's on-chain state, fetched once at
+ *  the page level and threaded down to ActiveTab + AlertsList + AboutTab.
+ *  No mock data — what you see here is what's on the chain right now. */
+type FarmerSnapshot = {
+  loading: boolean;
+  error: string | null;
+  /** Connected farmer's PDA, null when no wallet. */
+  farmerAccount: FarmerAccount | null;
+  /** Current-season GrowPack, null if the farmer hasn't applied yet. */
+  pack: GrowPack | null;
+  packAddress: string | null;
 };
 
-const ALERTS = [
-  {
-    id: "drought-eastern-cape",
-    severity: "warn" as const,
-    title: "Rainfall watch — Eastern Cape",
-    body: "32 mm of expected 80 mm so far this month. Cover threshold not yet breached.",
-    when: "today",
-  },
-  {
-    id: "repayment-due",
-    severity: "info" as const,
-    title: "Repayment in 14 days",
-    body: "Estimated R 1,820 due at harvest sale. No action needed yet.",
-    when: "yesterday",
-  },
-  {
-    id: "supplier",
-    severity: "info" as const,
-    title: "Supplier confirmed delivery",
-    body: "100 kg NPK fertilizer signed for at the cooperative depot.",
-    when: "Mon",
-  },
-];
+const EMPTY_SNAPSHOT: FarmerSnapshot = {
+  loading: false,
+  error: null,
+  farmerAccount: null,
+  pack: null,
+  packAddress: null,
+};
+
+type DashAlert = {
+  id: string;
+  severity: "warn" | "info";
+  title: string;
+  body: string;
+};
+
+const ZAR_FMT = new Intl.NumberFormat("en-ZA", { maximumFractionDigits: 0 });
+
+/** Derive the right-rail alerts from the connected farmer's real pack
+ *  state. Returns an empty list when there's nothing on-chain to flag —
+ *  no fabrication. IDs include the pack PDA so dismissals don't bleed
+ *  across packs / seasons / browsers. */
+function deriveAlerts(s: FarmerSnapshot): DashAlert[] {
+  if (!s.pack || !s.packAddress) return [];
+  const p = s.pack;
+  const id = (suffix: string) => `${s.packAddress}:${suffix}`;
+  const out: DashAlert[] = [];
+
+  if (p.status === "Requested") {
+    out.push({
+      id: id("awaiting-approval"),
+      severity: "info",
+      title: "Awaiting co-op approval",
+      body: "Your application is in review. The cooperative typically responds within 48 hours.",
+    });
+  }
+
+  if (p.status === "Approved") {
+    out.push({
+      id: id("awaiting-disbursement"),
+      severity: "info",
+      title: "Awaiting disbursement",
+      body: "Your application is approved. Inputs (seeds, fertilizer) are on their way from suppliers.",
+    });
+  }
+
+  if (p.status === "Active") {
+    if (p.rainfallPercentOfNorm > 0 && p.rainfallPercentOfNorm < p.thresholdPercent) {
+      out.push({
+        id: id("rainfall-low"),
+        severity: "warn",
+        title: "Rainfall watch",
+        body: `Latest observation: ${p.rainfallPercentOfNorm}% of normal. Threshold ${p.thresholdPercent}% — drought cover may pay out soon.`,
+      });
+    } else if (p.rainfallPercentOfNorm > 0) {
+      out.push({
+        id: id("rainfall-ok"),
+        severity: "info",
+        title: "Rainfall normal",
+        body: `Latest observation: ${p.rainfallPercentOfNorm}% of norm. Threshold not breached.`,
+      });
+    } else {
+      out.push({
+        id: id("cover-active"),
+        severity: "info",
+        title: "Drought cover active",
+        body: `Cover is live for the season. We pay out automatically if rainfall drops below ${p.thresholdPercent}% of norm.`,
+      });
+    }
+  }
+
+  if (p.status === "InsurancePaid") {
+    out.push({
+      id: id("payout-sent"),
+      severity: "info",
+      title: "Drought payout sent",
+      body: `R ${ZAR_FMT.format(Number(p.insurancePayout))} sent to your account. No claim form, no waiting.`,
+    });
+  }
+
+  if (p.status === "Repaid") {
+    out.push({
+      id: id("repaid"),
+      severity: "info",
+      title: "Pack repaid",
+      body: "Harvest sale closed and repayment settled. Ready to apply for next season.",
+    });
+  }
+
+  if (p.status === "Defaulted") {
+    out.push({
+      id: id("defaulted"),
+      severity: "warn",
+      title: "Pack closed without repayment",
+      body: "Talk to your co-op about replanting options or a credit-history reset path.",
+    });
+  }
+
+  return out;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -149,8 +220,53 @@ export default function DashboardPage() {
   // Pulses the Wallet sidebar item while the guided tour is on the
   // wallet step. Reset by the tour on stop / step-change.
   const [walletHighlighted, setWalletHighlighted] = useState(false);
-  const { publicKey: walletPubkey } = useWallet();
-  const { setVisible: setWalletModalVisible } = useWalletModal();
+  const { publicKey: walletPubkey, connect: connectWallet } = useFarmerWallet();
+
+  // ─── Real on-chain snapshot for the connected farmer ────────────
+  // One fetch at the page level; ActiveTab + AlertsList + AboutTab read
+  // from the same data so we don't make 3 RPC round-trips for one page.
+  const [snapshot, setSnapshot] = useState<FarmerSnapshot>(EMPTY_SNAPSHOT);
+  useEffect(() => {
+    if (!walletPubkey) {
+      setSnapshot(EMPTY_SNAPSHOT);
+      return;
+    }
+    let cancelled = false;
+    setSnapshot((s) => ({ ...s, loading: true, error: null }));
+    (async () => {
+      try {
+        const conn = getConnection();
+        const farmerIdHash = await farmerIdHashFrom(walletPubkey.toBase58());
+        const [farmerAcc] = farmerPda(walletPubkey, farmerIdHash);
+        const seasonId = new Date().getFullYear();
+        const [packAcc] = packPda(farmerAcc, seasonId);
+        const [farmerAccount, pack] = await Promise.all([
+          fetchFarmerAccount(conn, farmerAcc),
+          fetchGrowPack(conn, packAcc),
+        ]);
+        if (cancelled) return;
+        setSnapshot({
+          loading: false,
+          error: null,
+          farmerAccount,
+          pack,
+          packAddress: packAcc.toBase58(),
+        });
+      } catch (e) {
+        if (cancelled) return;
+        setSnapshot({
+          loading: false,
+          error: e instanceof Error ? e.message : String(e),
+          farmerAccount: null,
+          pack: null,
+          packAddress: null,
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [walletPubkey]);
 
   // Hydrate dismissed-alert IDs from localStorage on mount. Keep it in
   // an effect (not lazy useState init) so SSR and the first client
@@ -169,17 +285,24 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const dismissAllAlerts = () => {
-    const allIds = ALERTS.map((a) => a.id);
-    setDismissedAlertIds(new Set(allIds));
-    try {
-      window.localStorage.setItem(
-        DISMISSED_ALERTS_KEY,
-        JSON.stringify(allIds),
-      );
-    } catch {
-      /* private mode / quota — UI state still updates for this session */
-    }
+  // Dismiss whatever alerts are currently derived from real pack state.
+  // We persist the IDs so the badge stays cleared across reloads, even
+  // though the underlying alerts may recalculate on every fetch.
+  const dismissAllAlerts = (alertIds: string[]) => {
+    if (alertIds.length === 0) return;
+    setDismissedAlertIds((prev) => {
+      const next = new Set(prev);
+      alertIds.forEach((id) => next.add(id));
+      try {
+        window.localStorage.setItem(
+          DISMISSED_ALERTS_KEY,
+          JSON.stringify(Array.from(next)),
+        );
+      } catch {
+        /* private mode / quota — UI state still updates for this session */
+      }
+      return next;
+    });
   };
 
   // Supabase user load (or stub in demo mode)
@@ -252,14 +375,18 @@ export default function DashboardPage() {
   const walletShortForTour = walletPubkey
     ? `${walletPubkey.toBase58().slice(0, 4)}…${walletPubkey.toBase58().slice(-4)}`
     : null;
+  // Real region from FarmerAccount when we have it; tour falls back to
+  // a generic line if the farmer hasn't registered yet.
+  const tourRegion =
+    snapshot.farmerAccount &&
+    snapshot.farmerAccount.region < REGION_LABELS.length
+      ? REGION_LABELS[snapshot.farmerAccount.region]
+      : null;
   const tour = useDashboardTour(
     {
       firstName: user?.name?.split(" ")[0] ?? user?.name ?? "",
       walletShort: walletShortForTour,
-      activePack: {
-        crop: ACTIVE_PACK.crop,
-        region: ACTIVE_PACK.region,
-      },
+      region: tourRegion,
     },
     {
       onNavigateToTab: (tab: TourTabId) => {
@@ -330,7 +457,7 @@ export default function DashboardPage() {
       meta: walletShort ?? undefined,
       highlightTour: walletHighlighted,
       onClick: () => {
-        if (!walletPubkey) setWalletModalVisible(true);
+        if (!walletPubkey) void connectWallet();
         // If connected, the meta badge already shows the address — clicking
         // again is a no-op (use the right-rail button to disconnect).
       },
@@ -343,7 +470,8 @@ export default function DashboardPage() {
     },
   ];
 
-  const unreadCount = ALERTS.filter((a) => !dismissedAlertIds.has(a.id)).length;
+  const liveAlerts = deriveAlerts(snapshot);
+  const unreadCount = liveAlerts.filter((a) => !dismissedAlertIds.has(a.id)).length;
 
   return (
     <div className={styles.container}>
@@ -358,7 +486,13 @@ export default function DashboardPage() {
           onClick={() => goToTab("active")}
           aria-label="Mazra'at albaan — go to home"
         >
-          <div className={styles.logoMark}>MA</div>
+          <img
+            src="/brand/logo-mark.svg"
+            alt="Mazra'at albaan"
+            width={34}
+            height={34}
+            className={styles.logoMark}
+          />
           <div className={styles.logoText}>
             Mazra&apos;at albaan
             <em>Farmer Studio</em>
@@ -502,7 +636,7 @@ export default function DashboardPage() {
               <div className={styles.profileMeta}>
                 <h1 className={styles.profileName}>{user.name}</h1>
                 <div className={styles.profileRole}>
-                  Smallholder · {ACTIVE_PACK.region}
+                  {tourRegion ? `Smallholder · ${tourRegion}` : "Smallholder"}
                 </div>
               </div>
             </div>
@@ -526,13 +660,19 @@ export default function DashboardPage() {
 
           {/* Tabbed body */}
           {profileTab === "active" ? (
-            <ActiveTab firstName={firstName} onApplyClick={() => goToTab("apply")} />
+            <ActiveTab
+              firstName={firstName}
+              snapshot={snapshot}
+              walletConnected={walletPubkey !== null}
+              onApplyClick={() => goToTab("apply")}
+              onConnectClick={connectWallet}
+            />
           ) : profileTab === "apply" ? (
             <ApplyTab onNavigateToInsurance={() => goToTab("insurance")} />
           ) : profileTab === "insurance" ? (
             <InsuranceTab />
           ) : profileTab === "about" ? (
-            <AboutTab user={user} />
+            <AboutTab user={user} regionLabel={tourRegion} />
           ) : profileTab === "marketplace" ? (
             <MarketplaceTab />
           ) : (
@@ -568,7 +708,7 @@ export default function DashboardPage() {
                 : "All caught up"
             }
             onClick={() => {
-              if (unreadCount > 0) dismissAllAlerts();
+              if (unreadCount > 0) dismissAllAlerts(liveAlerts.map((a) => a.id));
             }}
             disabled={unreadCount === 0}
             style={{
@@ -689,7 +829,7 @@ export default function DashboardPage() {
         </div>
 
         <div className={styles.rightWrapper}>
-          <AlertsList dismissedIds={dismissedAlertIds} />
+          <AlertsList alerts={liveAlerts} dismissedIds={dismissedAlertIds} />
         </div>
       </aside>
 
@@ -714,15 +854,192 @@ export default function DashboardPage() {
 
 function ActiveTab({
   firstName,
+  snapshot,
+  walletConnected,
   onApplyClick,
+  onConnectClick,
 }: {
   firstName: string;
+  snapshot: FarmerSnapshot;
+  walletConnected: boolean;
   onApplyClick: () => void;
+  onConnectClick: () => void | Promise<void>;
 }) {
-  const pct = Math.round(
-    (ACTIVE_PACK.dayOfSeason / ACTIVE_PACK.totalDays) * 100,
-  );
-  const greetingLine = `Hello ${firstName}. You are on day ${ACTIVE_PACK.dayOfSeason} of ${ACTIVE_PACK.totalDays} of your ${ACTIVE_PACK.crop.toLowerCase()} season — that is ${pct} percent of the way through. Rainfall this month is ${ACTIVE_PACK.weather.monthMm} millimetres, which is normal. Repayment of about ${ACTIVE_PACK.repayAtHarvest.replace("R ", "")} Rand is due at harvest.`;
+  // ─── State 1: no wallet ─────────────────────────────────────────
+  if (!walletConnected) {
+    return (
+      <div className={styles.timelineSingle}>
+        <div className={styles.box}>
+          <div className={styles.boxHeader}>
+            <h2 className={styles.boxTitle}>Sawubona, {firstName}</h2>
+          </div>
+          <div className={styles.boxBody}>
+            <p
+              style={{
+                fontSize: 13,
+                color: "rgba(255, 230, 210, 0.72)",
+                lineHeight: 1.5,
+                marginBottom: 16,
+              }}
+            >
+              Connect your wallet to load your real Grow Pack and credit
+              history. Nothing on this screen is fabricated — it&apos;s all
+              read straight from the chain.
+            </p>
+            <button
+              type="button"
+              onClick={() => void onConnectClick()}
+              className={styles.sessionCTA}
+              style={{ border: "none", cursor: "pointer", fontFamily: "inherit" }}
+            >
+              Connect wallet
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── State 2: loading ───────────────────────────────────────────
+  if (snapshot.loading) {
+    return (
+      <div className={styles.timelineSingle}>
+        <div className={styles.box}>
+          <div
+            className={styles.boxBody}
+            style={{ textAlign: "center", padding: 28 }}
+          >
+            <span style={{ fontSize: 13, color: "rgba(255, 230, 210, 0.55)" }}>
+              Reading your account from devnet…
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── State 3: error ─────────────────────────────────────────────
+  if (snapshot.error) {
+    return (
+      <div className={styles.timelineSingle}>
+        <div className={styles.box}>
+          <div className={styles.boxHeader}>
+            <h2 className={styles.boxTitle}>Couldn&apos;t reach the chain</h2>
+          </div>
+          <div className={styles.boxBody}>
+            <span style={{ fontSize: 12, color: "rgba(255, 230, 210, 0.55)" }}>
+              {snapshot.error}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const { farmerAccount, pack } = snapshot;
+
+  // ─── State 4: wallet connected, no farmer registered yet ─────────
+  if (!farmerAccount) {
+    return (
+      <div className={styles.timelineSingle}>
+        <div className={styles.box}>
+          <div className={styles.boxHeader}>
+            <h2 className={styles.boxTitle}>Welcome, {firstName}</h2>
+          </div>
+          <div className={styles.boxBody}>
+            <p
+              style={{
+                fontSize: 13,
+                color: "rgba(255, 230, 210, 0.72)",
+                lineHeight: 1.5,
+                marginBottom: 16,
+              }}
+            >
+              You don&apos;t have a Grow Pack on chain yet. Apply once and
+              we&apos;ll register you with the cooperative, set up your
+              insurance cover, and book the credit — all in one go.
+            </p>
+            <button
+              type="button"
+              onClick={onApplyClick}
+              className={styles.sessionCTA}
+              style={{ border: "none", cursor: "pointer", fontFamily: "inherit" }}
+            >
+              Apply for your first Grow Pack
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Farmer registered — pull real region from FarmerAccount.
+  const regionLabel =
+    farmerAccount.region < REGION_LABELS.length
+      ? REGION_LABELS[farmerAccount.region]
+      : `Region ${farmerAccount.region}`;
+  const currentYear = new Date().getFullYear();
+
+  // ─── State 5: registered but no current-season pack ─────────────
+  if (!pack) {
+    return (
+      <div className={styles.timelineSingle}>
+        <div className={styles.timelinePair}>
+          <div className={styles.box}>
+            <div className={styles.boxHeader}>
+              <h2 className={styles.boxTitle}>Sawubona, {firstName}</h2>
+              <span className={styles.boxLabel}>Registered</span>
+            </div>
+            <div className={styles.boxBody}>
+              <div className={styles.introItem}>
+                <MapPin />
+                <span>{regionLabel}</span>
+              </div>
+              <div className={styles.introItem}>
+                <CalendarDays />
+                <span>
+                  No Grow Pack for <strong>{currentYear}</strong> yet
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className={`${styles.box} ${styles.session}`}>
+            <div className={styles.sessionEyebrow}>
+              <span className={styles.sessionDot} />
+              Your credit history
+            </div>
+            <h3 className={styles.sessionTitle}>{farmerAccount.score}</h3>
+            <p className={styles.sessionSubtitle}>
+              {farmerAccount.totalPacks} pack
+              {farmerAccount.totalPacks === 1 ? "" : "s"} ·{" "}
+              {farmerAccount.successfulRepayments} repaid ·{" "}
+              {farmerAccount.defaults} default
+              {farmerAccount.defaults === 1 ? "" : "s"}
+            </p>
+            <button
+              type="button"
+              onClick={onApplyClick}
+              className={styles.sessionCTA}
+              style={{ border: "none", cursor: "pointer", fontFamily: "inherit" }}
+            >
+              Apply for {currentYear}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── State 6: registered AND has a current-season pack ──────────
+  // Everything below comes straight from on-chain GrowPack + FarmerAccount.
+
+  const totalRepaymentZAR = ZAR_FMT.format(Number(pack.totalRepayment));
+  const bundleCostZAR = ZAR_FMT.format(Number(pack.bundleCost));
+  const maxPayoutZAR = ZAR_FMT.format(Number(pack.maxPayout));
+  const insurancePayoutZAR = ZAR_FMT.format(Number(pack.insurancePayout));
+
+  const greetingLine = `Hello ${firstName}. Your Grow Pack for season ${pack.seasonId} in ${regionLabel} is currently ${pack.status}. Repayment of about ${totalRepaymentZAR} Rand is due at harvest.`;
 
   return (
     <div className={styles.timelineSingle}>
@@ -730,33 +1047,38 @@ function ActiveTab({
         <div className={styles.box}>
           <div className={styles.boxHeader}>
             <h2 className={styles.boxTitle}>Sawubona, {firstName}</h2>
-            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+            <div
+              style={{
+                marginLeft: "auto",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
               <ListenButton
                 size="sm"
                 text={greetingLine}
                 ariaLabel="Listen — your daily summary, read aloud"
               />
-              <span className={styles.boxLabel}>Active</span>
+              <span className={styles.boxLabel}>{pack.status}</span>
             </div>
           </div>
           <div className={styles.boxBody}>
             <div className={styles.introItem}>
-              <Sprout />
-              <span>
-                Crop: <strong>{ACTIVE_PACK.crop}</strong> · {ACTIVE_PACK.hectares}{" "}
-                ha
-              </span>
-            </div>
-            <div className={styles.introItem}>
               <CalendarDays />
               <span>
-                Day <strong>{ACTIVE_PACK.dayOfSeason}</strong> of{" "}
-                {ACTIVE_PACK.totalDays} ({pct}%)
+                Season <strong>{pack.seasonId}</strong>
               </span>
             </div>
             <div className={styles.introItem}>
               <MapPin />
-              <span>{ACTIVE_PACK.region}</span>
+              <span>{regionLabel}</span>
+            </div>
+            <div className={styles.introItem}>
+              <Sprout />
+              <span>
+                Repay at harvest: <strong>R {totalRepaymentZAR}</strong>
+              </span>
             </div>
           </div>
         </div>
@@ -766,37 +1088,40 @@ function ActiveTab({
             <span className={styles.sessionDot} />
             Active Grow Pack
           </div>
-          <h3 className={styles.sessionTitle}>
-            {ACTIVE_PACK.crop} · {ACTIVE_PACK.hectares} ha
-          </h3>
+          <h3 className={styles.sessionTitle}>R {bundleCostZAR}</h3>
           <p className={styles.sessionSubtitle}>
-            Total today {ACTIVE_PACK.bundle} · Repay at harvest{" "}
-            {ACTIVE_PACK.repayAtHarvest}
+            Bundle today · Repay R {totalRepaymentZAR} after harvest
           </p>
-          <ul style={{ marginTop: 16, listStyle: "none", padding: 0, display: "grid", gap: 8 }}>
-            {ACTIVE_PACK.checklist.map((item) => (
-              <li
-                key={item.label}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  fontSize: 13,
-                  opacity: item.done ? 1 : 0.55,
-                }}
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 14,
-                    height: 14,
-                    borderRadius: 999,
-                    background: item.done ? "#E8B931" : "rgba(255,255,255,0.25)",
-                  }}
-                />
-                {item.label}
+          <ul
+            style={{
+              marginTop: 16,
+              listStyle: "none",
+              padding: 0,
+              display: "grid",
+              gap: 6,
+              fontSize: 12,
+              color: "rgba(255, 230, 210, 0.72)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            <li>
+              Drought threshold: <strong>{pack.thresholdPercent}%</strong> of
+              norm rainfall
+            </li>
+            <li>
+              Max payout: <strong>R {maxPayoutZAR}</strong>
+            </li>
+            {pack.rainfallPercentOfNorm > 0 ? (
+              <li>
+                Latest observation:{" "}
+                <strong>{pack.rainfallPercentOfNorm}%</strong> of norm
               </li>
-            ))}
+            ) : null}
+            {pack.insurancePayout > 0n ? (
+              <li>
+                Insurance paid: <strong>R {insurancePayoutZAR}</strong>
+              </li>
+            ) : null}
           </ul>
         </div>
       </div>
@@ -804,24 +1129,22 @@ function ActiveTab({
       <div className={styles.timelinePair}>
         <div className={styles.box}>
           <div className={styles.boxHeader}>
-            <h2 className={styles.boxTitle}>Weather · 7 days</h2>
+            <h2 className={styles.boxTitle}>Rainfall</h2>
             <span className={styles.boxLabel}>
-              {ACTIVE_PACK.weather.status === "normal" ? "Normal" : "Watch"}
+              {pack.rainfallPercentOfNorm === 0
+                ? "Awaiting"
+                : pack.rainfallPercentOfNorm < pack.thresholdPercent
+                ? "Below threshold"
+                : "Above threshold"}
             </span>
           </div>
           <div className={styles.boxBody}>
             <div className={styles.introItem}>
               <Droplets />
               <span>
-                {ACTIVE_PACK.weather.tempC}°C ·{" "}
-                {ACTIVE_PACK.weather.conditions}
-              </span>
-            </div>
-            <div className={styles.introItem}>
-              <span aria-hidden="true" style={{ width: 18 }} />
-              <span>
-                Rainfall this month:{" "}
-                <strong>{ACTIVE_PACK.weather.monthMm} mm</strong> (normal)
+                {pack.rainfallPercentOfNorm === 0
+                  ? "No observation recorded yet — your co-op will record one as the season progresses."
+                  : `Latest: ${pack.rainfallPercentOfNorm}% of seasonal norm. Threshold ${pack.thresholdPercent}%.`}
               </span>
             </div>
           </div>
@@ -832,11 +1155,13 @@ function ActiveTab({
             <span className={styles.sessionDot} />
             Your credit history
           </div>
-          <h3 className={styles.sessionTitle}>
-            {ACTIVE_PACK.credit.score}
-          </h3>
+          <h3 className={styles.sessionTitle}>{farmerAccount.score}</h3>
           <p className={styles.sessionSubtitle}>
-            {ACTIVE_PACK.credit.label} · {ACTIVE_PACK.credit.trend}
+            {farmerAccount.totalPacks} pack
+            {farmerAccount.totalPacks === 1 ? "" : "s"} ·{" "}
+            {farmerAccount.successfulRepayments} repaid ·{" "}
+            {farmerAccount.defaults} default
+            {farmerAccount.defaults === 1 ? "" : "s"}
           </p>
           <button
             type="button"
@@ -853,7 +1178,7 @@ function ActiveTab({
 }
 
 function InsuranceTab() {
-  const { publicKey: walletPubkey } = useWallet();
+  const { publicKey: walletPubkey } = useFarmerWallet();
   const [pack, setPack] = useState<GrowPack | null>(null);
   const [packAddress, setPackAddress] = useState<string>(DEMO_PACK_ADDRESS);
   const [isPreview, setIsPreview] = useState<boolean>(false);
@@ -1248,7 +1573,7 @@ type HistoryRow = {
 };
 
 function HistoryTab({ onViewPack }: { onViewPack: () => void }) {
-  const { publicKey: walletPubkey } = useWallet();
+  const { publicKey: walletPubkey } = useFarmerWallet();
   const [rows, setRows] = useState<HistoryRow[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "no-wallet" | "empty" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState("");
@@ -1428,7 +1753,7 @@ type DealHistoryRow = {
 };
 
 function DealHistorySection() {
-  const { publicKey } = useWallet();
+  const { publicKey } = useFarmerWallet();
   const [rows, setRows] = useState<DealHistoryRow[]>([]);
   const [state, setState] = useState<
     "loading" | "ready" | "no-wallet" | "empty" | "error"
@@ -1694,7 +2019,13 @@ function HistoryCard({ row, onView }: { row: HistoryRow; onView: () => void }) {
   );
 }
 
-function AboutTab({ user }: { user: DashUser }) {
+function AboutTab({
+  user,
+  regionLabel,
+}: {
+  user: DashUser;
+  regionLabel: string | null;
+}) {
   return (
     <div className={styles.timelineSingle}>
       <div className={styles.box}>
@@ -1706,15 +2037,19 @@ function AboutTab({ user }: { user: DashUser }) {
           <div className={styles.introItem}>
             <Briefcase />
             <span>
-              Smallholder at <strong>{ACTIVE_PACK.region} Cooperative</strong>
+              {regionLabel
+                ? <>Smallholder registered with the <strong>{regionLabel}</strong> cooperative</>
+                : "Smallholder — not yet registered on chain"}
             </span>
           </div>
-          <div className={styles.introItem}>
-            <MapPin />
-            <span>
-              Based in <strong>{ACTIVE_PACK.region}, SA</strong>
-            </span>
-          </div>
+          {regionLabel ? (
+            <div className={styles.introItem}>
+              <MapPin />
+              <span>
+                Based in <strong>{regionLabel}, SA</strong>
+              </span>
+            </div>
+          ) : null}
           <div className={styles.introItem}>
             <Mail />
             <a href={`mailto:${user.email}`}>{user.email}</a>
@@ -1747,8 +2082,45 @@ function ComingSoon({ label }: { label: string }) {
 //  Right rail — alerts
 // ============================================================================
 
-function AlertsList({ dismissedIds }: { dismissedIds: Set<string> }) {
-  const allRead = ALERTS.every((a) => dismissedIds.has(a.id));
+function AlertsList({
+  alerts,
+  dismissedIds,
+}: {
+  alerts: DashAlert[];
+  dismissedIds: Set<string>;
+}) {
+  // Empty state — nothing on-chain to flag yet (no wallet, or no
+  // current-season pack, or all alerts dismissed). Honest "all quiet"
+  // beats fabricated "rainfall watch" in an empty state.
+  if (alerts.length === 0) {
+    return (
+      <div style={{ padding: "16px 20px" }}>
+        <h3
+          style={{
+            fontSize: 11,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "rgba(255,255,255,0.55)",
+            margin: "0 0 12px",
+          }}
+        >
+          All quiet
+        </h3>
+        <div
+          style={{
+            fontSize: 12,
+            color: "rgba(255, 230, 210, 0.55)",
+            lineHeight: 1.5,
+          }}
+        >
+          We&apos;ll surface drought watches, payouts, and repayment reminders
+          here once your Grow Pack is on chain.
+        </div>
+      </div>
+    );
+  }
+
+  const allRead = alerts.every((a) => dismissedIds.has(a.id));
 
   return (
     <div style={{ padding: "16px 20px" }}>
@@ -1764,7 +2136,7 @@ function AlertsList({ dismissedIds }: { dismissedIds: Set<string> }) {
         {allRead ? "All caught up" : "Needs your attention"}
       </h3>
       <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 12 }}>
-        {ALERTS.map((alert) => {
+        {alerts.map((alert) => {
           const isRead = dismissedIds.has(alert.id);
           return (
             <li
@@ -1807,16 +2179,17 @@ function AlertsList({ dismissedIds }: { dismissedIds: Set<string> }) {
                 >
                   {alert.body}
                 </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "rgba(255,255,255,0.4)",
-                    marginTop: 4,
-                  }}
-                >
-                  {alert.when}
-                  {isRead ? " · read" : null}
-                </div>
+                {isRead ? (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "rgba(255,255,255,0.4)",
+                      marginTop: 4,
+                    }}
+                  >
+                    read
+                  </div>
+                ) : null}
               </div>
             </li>
           );

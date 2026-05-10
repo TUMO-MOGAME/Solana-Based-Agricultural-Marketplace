@@ -100,15 +100,14 @@
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: var(--accent-gradient);
-  display: grid;
-  place-items: center;
-  color: #1a0f0c;
-  font-weight: 900;
-  font-size: 13px;
-  letter-spacing: 0.5px;
+  /* The SVG ships with its own forest-green disc + gold sprout. We
+     drop the previous coral-amber gradient bg so the brand mark
+     reads cleanly against the dark plum panel. Box-shadow stays for
+     the subtle elevation. */
   flex-shrink: 0;
-  box-shadow: 0 8px 20px rgba(255, 123, 107, 0.25);
+  display: block;
+  object-fit: contain;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
 }
 
 .logoText {

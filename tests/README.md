@@ -1,16 +1,21 @@
 # tests/
 
-Test suite for Project Vuna's core business logic.
+Test suite for Project Vuna's core business logic. **99 Vitest tests, all passing.**
 
 ## What's tested here
 
-Pure-function business rules from `core/` — credit scoring, Grow Pack pricing, parametric trigger and payout, harvest-sale repayment, currency formatting, input validation. These rules are the canonical spec; the Solana program (Rust/Anchor) reimplements them with parallel tests once the toolchain is installed.
+Pure-function business rules from `core/` — credit scoring, Grow Pack pricing, parametric trigger and payout, harvest-sale repayment, currency formatting, input validation. These rules are the canonical spec; the Solana program (Rust/Anchor) reimplements them with parallel tests in `programs/vuna/programs/vuna/src/state.rs::tests` (41 cargo unit tests + 3 litesvm integration tests).
 
-These are NOT tested here (they get their own test trees once their components are scaffolded):
+The `app/` frontend has its own separate Vitest suite at `app/src/lib/vuna/program.test.ts` — **40 tests** covering PDA derivation, on-chain pricing math, and instruction-encoder byte layouts for 5 instructions (register_farmer, request_grow_pack, approve_grow_pack, disburse_grow_pack, trigger_insurance_payout). That's a different concern (chain-client integration, not pure business rules) so it lives next to the code it tests rather than here.
 
-- Solana program execution (lives in `programs/tests/` with Anchor)
-- React component rendering (lives in `app/` with Vitest + Testing Library)
-- HTTP route handlers (lives in `api/` with Vitest + supertest)
+**Test totals across the project: 183.** 99 (this dir) + 40 (app) + 41 cargo + 3 litesvm.
+
+These are NOT tested here:
+
+- Solana program execution (lives in `programs/vuna/programs/vuna/tests/lifecycle.rs`)
+- Frontend Solana client (lives in `app/src/lib/vuna/program.test.ts`)
+- React component rendering (not started — would live alongside its component once needed)
+- HTTP route handlers in `api/` (`api/` is still an empty scaffold)
 - End-to-end browser flows (Playwright, in a future `e2e/` folder)
 
 ## Layout

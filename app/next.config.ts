@@ -15,6 +15,22 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+
+  // Privy + WalletConnect bring along a few optional peer deps that we
+  // don't use (Farcaster login, pino-pretty for log prettifying). Their
+  // import paths exist for users who DO use those features; the rest of
+  // us get spammed with "Module not found" warnings. Aliasing them to
+  // `false` tells webpack "treat this as resolved-but-empty" — silences
+  // the warnings without affecting anything we actually run.
+  webpack: (config) => {
+    config.resolve = config.resolve || {};
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      "@farcaster/mini-app-solana": false,
+      "pino-pretty": false,
+    };
+    return config;
+  },
 };
 
 export default nextConfig;

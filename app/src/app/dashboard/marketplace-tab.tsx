@@ -36,8 +36,9 @@ import {
   X,
   Trash2,
 } from "lucide-react";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey, Transaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { useFarmerWallet } from "@/lib/vuna/farmer-wallet";
 import {
   fetchDeal,
   fetchDealsByWallet,
@@ -83,7 +84,7 @@ type OfferRow = {
 };
 
 export function MarketplaceTab() {
-  const { publicKey, sendTransaction } = useWallet();
+  const { publicKey, sendTransaction } = useFarmerWallet();
   const { connection } = useConnection();
 
   const [deals, setDeals] = useState<ActiveDeal[]>([]);
@@ -1349,7 +1350,7 @@ type HarvestRow = {
 };
 
 function FarmerHarvests() {
-  const { publicKey } = useWallet();
+  const { publicKey } = useFarmerWallet();
   const { connection } = useConnection();
   const [rows, setRows] = useState<HarvestRow[]>([]);
   const [state, setState] = useState<

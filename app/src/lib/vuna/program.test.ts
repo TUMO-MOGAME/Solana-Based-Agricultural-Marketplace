@@ -16,6 +16,9 @@ import {
   SERVICE_FEE_BPS_DEFAULT,
   makeRegisterFarmerIx,
   makeRequestGrowPackIx,
+  makeApproveGrowPackIx,
+  makeDisburseGrowPackIx,
+  makeTriggerInsurancePayoutIx,
 } from "./program";
 
 // Stable test fixtures
@@ -222,5 +225,113 @@ describe("makeRequestGrowPackIx", () => {
   it("places the system program in slot 3", () => {
     const ix = makeRequestGrowPackIx(args);
     expect(ix.keys[3].pubkey.toBase58()).toBe(SystemProgram.programId.toBase58());
+  });
+});
+
+// ============================================================================
+//  Co-op-side encoders — approve / disburse / trigger
+// ============================================================================
+//
+// All three share the same account ordering: pack(writable), farmer(read-only),
+// cooperative(signer). approve/disburse carry only the discriminator; trigger
+// adds a 1-byte rainfall_percent.
+
+const FARMER_PDA = farmerPda(COOP, FARMER_ID_HASH)[0];
+const PACK_PDA = packPda(FARMER_PDA, SEASON_ID)[0];
+const COOP_ARGS = { cooperative: COOP, farmer: FARMER_PDA, pack: PACK_PDA };
+
+describe("makeApproveGrowPackIx", () => {
+  it("data is exactly 8 bytes (just the discriminator)", () => {
+    expect(makeApproveGrowPackIx(COOP_ARGS).data.length).toBe(8);
+  });
+
+  it("starts with the approve_grow_pack discriminator", () => {
+    const ix = makeApproveGrowPackIx(COOP_ARGS);
+    expect(Array.from(ix.data)).toEqual([162, 148, 198, 224, 8, 87, 231, 59]);
+  });
+
+  it("places the GrowPack PDA writable in slot 0", () => {
+    const ix = makeApproveGrowPackIx(COOP_ARGS);
+    expect(ix.keys[0].pubkey.toBase58()).toBe(PACK_PDA.toBase58());
+    expect(ix.keys[0].isWritable).toBe(true);
+    expect(ix.keys[0].isSigner).toBe(false);
+  });
+
+  it("places the FarmerAccount PDA read-only in slot 1", () => {
+    const ix = makeApproveGrowPackIx(COOP_ARGS);
+    expect(ix.keys[1].pubkey.toBase58()).toBe(FARMER_PDA.toBase58());
+    expect(ix.keys[1].isWritable).toBe(false);
+    expect(ix.keys[1].isSigner).toBe(false);
+  });
+
+  it("places the cooperative as signer + read-only in slot 2", () => {
+    const ix = makeApproveGrowPackIx(COOP_ARGS);
+    expect(ix.keys[2].pubkey.toBase58()).toBe(COOP.toBase58());
+    expect(ix.keys[2].isSigner).toBe(true);
+    expect(ix.keys[2].isWritable).toBe(false);
+  });
+});
+
+describe("makeDisburseGrowPackIx", () => {
+  it("data is exactly 8 bytes", () => {
+    expect(makeDisburseGrowPackIx(COOP_ARGS).data.length).toBe(8);
+  });
+
+  it("starts with the disburse_grow_pack discriminator", () => {
+    const ix = makeDisburseGrowPackIx(COOP_ARGS);
+    expect(Array.from(ix.data)).toEqual([102, 96, 218, 179, 117, 153, 65, 190]);
+  });
+
+  it("uses the same account ordering as approve_grow_pack", () => {
+    const ix = makeDisburseGrowPackIx(COOP_ARGS);
+    expect(ix.keys[0].pubkey.toBase58()).toBe(PACK_PDA.toBase58());
+    expect(ix.keys[1].pubkey.toBase58()).toBe(FARMER_PDA.toBase58());
+    expect(ix.keys[2].pubkey.toBase58()).toBe(COOP.toBase58());
+    expect(ix.keys[2].isSigner).toBe(true);
+  });
+});
+
+describe("makeTriggerInsurancePayoutIx", () => {
+  const args = { ...COOP_ARGS, rainfallPercent: 40 };
+
+  it("data is exactly 9 bytes (8 disc + 1 byte rainfall)", () => {
+    expect(makeTriggerInsurancePayoutIx(args).data.length).toBe(9);
+  });
+
+  it("starts with the trigger_insurance_payout discriminator", () => {
+    const ix = makeTriggerInsurancePayoutIx(args);
+    expect(Array.from(ix.data.slice(0, 8))).toEqual([6, 141, 36, 41, 176, 33, 10, 82]);
+  });
+
+  it("encodes rainfall_percent as the last byte", () => {
+    const ix = makeTriggerInsurancePayoutIx(args);
+    expect(ix.data[8]).toBe(40);
+  });
+
+  it("encodes rainfall=0 as the boundary case", () => {
+    const ix = makeTriggerInsurancePayoutIx({ ...args, rainfallPercent: 0 });
+    expect(ix.data[8]).toBe(0);
+  });
+
+  it("encodes rainfall=255 as the upper boundary", () => {
+    const ix = makeTriggerInsurancePayoutIx({ ...args, rainfallPercent: 255 });
+    expect(ix.data[8]).toBe(255);
+  });
+
+  it("rejects rainfall outside u8 range", () => {
+    expect(() =>
+      makeTriggerInsurancePayoutIx({ ...args, rainfallPercent: -1 }),
+    ).toThrow(/u8/);
+    expect(() =>
+      makeTriggerInsurancePayoutIx({ ...args, rainfallPercent: 256 }),
+    ).toThrow(/u8/);
+  });
+
+  it("uses the same account ordering as approve/disburse", () => {
+    const ix = makeTriggerInsurancePayoutIx(args);
+    expect(ix.keys[0].pubkey.toBase58()).toBe(PACK_PDA.toBase58());
+    expect(ix.keys[1].pubkey.toBase58()).toBe(FARMER_PDA.toBase58());
+    expect(ix.keys[2].pubkey.toBase58()).toBe(COOP.toBase58());
+    expect(ix.keys[2].isSigner).toBe(true);
   });
 });

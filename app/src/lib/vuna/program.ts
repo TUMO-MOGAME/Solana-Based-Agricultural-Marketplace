@@ -352,6 +352,9 @@ const DEAL_ACCOUNT_DISC = new Uint8Array([125, 223, 160, 234, 71, 162, 182, 219]
 /** Anchor account-discriminator for the BuyerOffer account type. */
 const BUYER_OFFER_ACCOUNT_DISC = new Uint8Array([124, 127, 189, 174, 44, 105, 164, 195]);
 
+/** Anchor account-discriminator for the GrowPack account type. */
+const GROW_PACK_ACCOUNT_DISC = new Uint8Array([62, 131, 53, 159, 191, 11, 217, 208]);
+
 /** Default service-fee bps (10%) — matches `core/grow-pack.ts`. */
 export const SERVICE_FEE_BPS_DEFAULT = 1000;
 
@@ -456,6 +459,133 @@ export function makeRequestGrowPackIx(
     ],
     data: Buffer.from(data),
   });
+}
+
+// ---- approve_grow_pack ------------------------------------------------------
+//
+// Co-op-side instruction. Caller has already scanned the program for packs
+// in `Requested` status, so they pass the pack PDA + farmer PDA directly
+// rather than re-deriving from the farmer hash (which the co-op may not
+// have on hand for an unknown farmer's application).
+
+export interface ApproveGrowPackArgs {
+  /** Co-op signer — must equal `farmer.cooperative` on-chain. */
+  cooperative: PublicKey;
+  /** FarmerAccount PDA the pack belongs to. */
+  farmer: PublicKey;
+  /** GrowPack PDA being approved. */
+  pack: PublicKey;
+}
+
+export function makeApproveGrowPackIx(
+  args: ApproveGrowPackArgs,
+): TransactionInstruction {
+  const data = new Uint8Array(8);
+  data.set(DISCRIMINATORS.approve_grow_pack, 0);
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: args.pack, isSigner: false, isWritable: true },
+      { pubkey: args.farmer, isSigner: false, isWritable: false },
+      { pubkey: args.cooperative, isSigner: true, isWritable: false },
+    ],
+    data: Buffer.from(data),
+  });
+}
+
+// ---- disburse_grow_pack -----------------------------------------------------
+//
+// Identical account ordering and data layout to approve_grow_pack — only
+// the discriminator differs. Inputs delivered → status Approved → Active.
+
+export type DisburseGrowPackArgs = ApproveGrowPackArgs;
+
+export function makeDisburseGrowPackIx(
+  args: DisburseGrowPackArgs,
+): TransactionInstruction {
+  const data = new Uint8Array(8);
+  data.set(DISCRIMINATORS.disburse_grow_pack, 0);
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: args.pack, isSigner: false, isWritable: true },
+      { pubkey: args.farmer, isSigner: false, isWritable: false },
+      { pubkey: args.cooperative, isSigner: true, isWritable: false },
+    ],
+    data: Buffer.from(data),
+  });
+}
+
+// ---- trigger_insurance_payout -----------------------------------------------
+//
+// Co-op (or future underwriter signer) attests an observed rainfall %.
+// On-chain program computes the payout itself via ParametricPolicy::evaluate_payout
+// — caller can't inflate the amount. See trigger_insurance_payout.rs.
+
+export interface TriggerInsurancePayoutArgs extends ApproveGrowPackArgs {
+  /** Observed rainfall as a percentage of the seasonal norm (0–255). */
+  rainfallPercent: number;
+}
+
+export function makeTriggerInsurancePayoutIx(
+  args: TriggerInsurancePayoutArgs,
+): TransactionInstruction {
+  if (args.rainfallPercent < 0 || args.rainfallPercent > 255) {
+    throw new Error("rainfallPercent must fit in a u8 (0–255)");
+  }
+  // disc(8) + rainfall_percent(1) = 9 bytes
+  const data = new Uint8Array(9);
+  data.set(DISCRIMINATORS.trigger_insurance_payout, 0);
+  data[8] = args.rainfallPercent & 0xff;
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: args.pack, isSigner: false, isWritable: true },
+      { pubkey: args.farmer, isSigner: false, isWritable: false },
+      { pubkey: args.cooperative, isSigner: true, isWritable: false },
+    ],
+    data: Buffer.from(data),
+  });
+}
+
+// ---- fetchAllGrowPacks ------------------------------------------------------
+//
+// Scans every GrowPack PDA owned by the program. Used by /coop/* to build
+// the pending / awaiting-disbursement / active queues. Same wasteful pattern
+// as fetchAllBuyerOffers — fine for the hackathon, indexer in production.
+//
+// Optional `status` filter is applied client-side after the Borsh decode.
+
+export async function fetchAllGrowPacks(
+  connection: Connection,
+  status?: GrowPackStatus | GrowPackStatus[],
+): Promise<{ address: PublicKey; pack: GrowPack }[]> {
+  const accounts = await connection.getProgramAccounts(PROGRAM_ID);
+  const wanted = status === undefined
+    ? null
+    : new Set(Array.isArray(status) ? status : [status]);
+
+  const out: { address: PublicKey; pack: GrowPack }[] = [];
+  for (const { pubkey, account } of accounts) {
+    if (account.data.length < 8 + 1) continue;
+    let match = true;
+    for (let i = 0; i < 8; i++) {
+      if (account.data[i] !== GROW_PACK_ACCOUNT_DISC[i]) {
+        match = false;
+        break;
+      }
+    }
+    if (!match) continue;
+    let pack: GrowPack;
+    try {
+      pack = decodeGrowPack(account.data);
+    } catch {
+      continue;
+    }
+    if (wanted && !wanted.has(pack.status)) continue;
+    out.push({ address: pubkey, pack });
+  }
+  return out;
 }
 
 // ============================================================================

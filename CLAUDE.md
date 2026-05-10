@@ -48,9 +48,11 @@ A Solana-based agricultural marketplace for South African smallholder farmers, b
 │   ├── architecture.md · regulatory.md · glossary.md
 │   └── outreach/               (insurer outreach pack — one-pager + product-brief PDFs)
 │
-├── design/                  ← UI design + mockups
+├── design/                  ← UI design + mockups + brand
 │   ├── palette.md              (original cream/green/gold brand palette)
-│   ├── build_mockups.py
+│   ├── logo-mark.svg · logo-horizontal.svg
+│   ├── logo-mark-{64,256,512,1024}.png · banner-{3x1,4x1}.png
+│   ├── build_logo.py · build_banner.py · build_mockups.py
 │   └── mockups/{mobile,web}.png
 │
 ├── programs/vuna/           ← Anchor program — DEPLOYED to devnet
@@ -59,35 +61,48 @@ A Solana-based agricultural marketplace for South African smallholder farmers, b
 │   │   ├── lib.rs · constants.rs · error.rs · state.rs
 │   │   └── instructions/{register_farmer,request_grow_pack,
 │   │       approve_grow_pack,disburse_grow_pack,
-│   │       trigger_insurance_payout,settle_repayment}.rs
+│   │       trigger_insurance_payout,settle_repayment,
+│   │       create_deal,confirm_and_release,
+│   │       post_buyer_offer,cancel_buyer_offer}.rs
 │   ├── programs/vuna/tests/lifecycle.rs   (litesvm integration test)
 │   └── target/deploy/vuna.so              (built binary)
 │
 ├── app/                     ← Next.js frontend — DEPLOYED to Vercel
 │   ├── package.json · next.config.ts · vitest.config.ts · tsconfig.json
+│   ├── public/brand/{logo-mark.svg,logo-horizontal.svg,logo-mark-{256,512}.png}
 │   ├── public/fonts/Satoshi-*.woff2
 │   ├── scripts/setup-devnet-demo.mjs       (one-shot demo data setup)
-│   ├── supabase/migrations/                (3 SQL files)
+│   ├── supabase/migrations/                (3 SQL files: notifications, profiles, posts)
 │   └── src/
 │       ├── app/                            (Next.js App Router)
+│       │   ├── icon.png                    (Next.js auto-favicon, brand mark 256px)
 │       │   ├── page.tsx                    (Mazra'at albaan landing)
 │       │   ├── layout.tsx
 │       │   ├── login · signup · forgot-password · reset-password · auth/callback
-│       │   ├── dashboard/                  (3-column shell, 5 in-page tabs)
-│       │   │   ├── page.tsx
+│       │   ├── dashboard/                  (farmer surface — 3-column shell, 5 in-page tabs)
+│       │   │   ├── page.tsx                (live on-chain reads, no mock data)
 │       │   │   ├── apply-tab.tsx           (shared with /grow-pack/new)
+│       │   │   ├── marketplace-tab.tsx
 │       │   │   ├── dashboard.module.css
 │       │   │   └── loading.tsx
+│       │   ├── coop/                       (cooperative-staff admin surface — Phantom)
+│       │   │   └── page.tsx                (approve / disburse / trigger drought payout)
 │       │   ├── grow-pack/new/              (standalone wrapper around <ApplyTab/>)
-│       │   └── insurance/[packId]/         (standalone shareable URL)
+│       │   ├── insurance/[packId]/         (standalone shareable URL)
+│       │   └── api/tts/                    (server-side ElevenLabs proxy)
 │       ├── components/ui/                  (shadcn primitives, vendored)
 │       └── lib/
 │           ├── supabase/                   (browser + server clients, demo-mode aware)
-│           └── vuna/                       (Solana client)
+│           └── vuna/                       (Solana client + custodial wallet)
 │               ├── program.ts              (PDA helpers, Borsh codecs, ix encoders)
-│               ├── program.test.ts         (25 vitest tests)
-│               ├── provider.tsx            (wallet-adapter providers)
-│               └── wallet-button.tsx       (compact connect/disconnect)
+│               ├── program.test.ts         (40 vitest tests)
+│               ├── provider.tsx            (wallet-adapter + conditional <PrivyProvider>)
+│               ├── farmer-wallet.tsx       (useFarmerWallet — bridges Privy ↔ wallet-adapter)
+│               ├── privy-config.ts         (env-var-gated Privy config)
+│               ├── wallet-button.tsx       (compact connect/disconnect, mode-aware)
+│               ├── voice.ts                (ElevenLabs streaming helper)
+│               ├── listen-button.tsx       (one-shot read-aloud)
+│               └── dashboard-tour.tsx      (guided voice tour with per-step tab nav)
 │
 ├── api/                     ← Node.js backend (scaffold — not started)
 │
@@ -124,15 +139,17 @@ Smallholders grow ~70% of African food but get under 5% of bank lending. Closing
 |-|-|-|
 | Blockchain | Solana (Anchor 1.0.2 / Rust 1.95 MSVC) | ✅ deployed devnet |
 | Frontend | Next.js 15.5 + React 19 + Tailwind CSS 4 | ✅ deployed Vercel |
-| Wallet (demo) | `@solana/wallet-adapter-*` with Phantom | ✅ wired |
-| Wallet (prod) | Magic.link / Privy custodial | ⏳ not yet wired (planned) |
-| Auth | Supabase (`@supabase/ssr`) with demo-mode fallback | ✅ optional |
+| Wallet (farmer / `/dashboard`) | `@privy-io/react-auth` — email-OTP custodial, embedded Solana wallet | ✅ wired (env-var gated) |
+| Wallet (co-op / `/coop`) | `@solana/wallet-adapter-*` with Phantom + Solflare | ✅ wired |
+| Wallet bridge | `lib/vuna/farmer-wallet.tsx` — `useFarmerWallet()` exposes the wallet-adapter-shaped API regardless of backend | ✅ wired |
+| Auth (dashboard gate) | Supabase (`@supabase/ssr`) with demo-mode fallback | ✅ optional, applied |
+| Voice (read-aloud + tour) | ElevenLabs Flash v2.5 via `/api/tts` server proxy | ✅ wired (env-var gated) |
 | Backend | Node.js + Express | ❌ `api/` not started |
 | Hosting | Vercel for frontend | ✅ live |
-| Oracle (weather) | TBD — likely underwriter-attestation model | ❌ Pyth has no weather feeds (confirmed); Switchboard is build-your-own; Insurance Act forces a licensed underwriter into the loop anyway. See `spikes/oracle-check/FINDINGS.md`. |
+| Oracle (weather) | Underwriter-attestation (caller passes rainfall %, on-chain program computes payout). | ⚠️ caller is the co-op for now; will swap to a licensed-underwriter signing service when one is engaged. See `spikes/oracle-check/FINDINGS.md`. |
 | Oracle (price) | Pyth Network | ⏳ planned (USD/ZAR FX, crop futures for fair-price reference) |
 | Stablecoin | USDC (devnet, demo-only) | ⏳ no real value moved |
-| Database | PostgreSQL via Supabase (3 migrations on disk) | ⏳ migrations not applied to a real Supabase project |
+| Database | PostgreSQL via Supabase (3 migrations applied) | ✅ live |
 | File storage | IPFS / Arweave | ❌ not started |
 
 ---
@@ -269,40 +286,46 @@ We hold these licences ourselves OR partner with someone who does. No shortcuts.
 ### Done — frontend
 - [x] Lifted Next.js + Supabase shell from "Social Assembly" project on 2026-05-07
 - [x] Stripped 38+ files of agent-backend cruft, trimmed dashboard CSS 5293 → 945 lines, removed ~2.9 MB of unused assets
-- [x] Rebranded to **Mazra'at albaan** (page titles, auth pages, root landing, dashboard chrome)
-- [x] Made Supabase optional with demo-mode fallback (no env vars → stub user)
-- [x] Wired wallet adapter (Phantom) — `VunaWalletProvider` in root layout, `<WalletButton />` in dashboard
-- [x] Built `lib/vuna/program.ts` — `PROGRAM_ID`, PDA helpers, hand-rolled Borsh decoders for `GrowPack` + `FarmerAccount`, fetchers, instruction encoders for `register_farmer` and `request_grow_pack` (discriminators hardcoded — Anchor IDL builder is broken on Windows). 25 Vitest tests.
+- [x] Rebranded to **Mazra'at albaan** (page titles, auth pages, root landing, dashboard chrome, favicon, branded logo SVG/PNG mark in `app/public/brand/`)
+- [x] Made Supabase optional with demo-mode fallback (no env vars → stub user) — and wired to a real Supabase project (`ewsqeqlffromnxogtubj`) with all 3 migrations applied
+- [x] **Custodial farmer wallet via Privy** — `lib/vuna/farmer-wallet.tsx` exposes `useFarmerWallet()` matching the wallet-adapter shape; under the hood it routes to Privy email-OTP + auto-created embedded Solana wallet when `NEXT_PUBLIC_PRIVY_APP_ID` is set, else falls back to wallet-adapter / Phantom. All 5 `useWallet()` call sites migrated. Privy provider config wires `toSolanaWalletConnectors()` + `solana.rpcs[devnet]` (built with `@solana/kit`).
+- [x] **Wallet-adapter (Phantom + Solflare)** kept for the co-op surface — same `<VunaWalletProvider>` mounts both stacks; the surfaces just read different hooks.
+- [x] **Co-op admin page at `/coop`** — three sections (Pending applications / Awaiting disbursement / Active packs · drought watch), each row driven by real on-chain `getProgramAccounts` scan via `fetchAllGrowPacks(connection, status)`. Action buttons wire to the new `makeApprove/Disburse/TriggerInsurancePayoutIx` encoders. Phantom-only auth (technical users — no need to hide the chain).
+- [x] **`lib/vuna/program.ts` extended** — added `makeApproveGrowPackIx`, `makeDisburseGrowPackIx`, `makeTriggerInsurancePayoutIx`, `fetchAllGrowPacks`, `GROW_PACK_ACCOUNT_DISC` (lifted out of `setup-devnet-demo.mjs`). Hand-rolled Borsh decoders unchanged — discriminators hardcoded because Anchor's IDL builder is still broken on Windows.
+- [x] **ElevenLabs voice surface** — `/api/tts` server proxy (Flash v2.5), `<ListenButton />` for one-shot read-aloud (used on Active + Insurance), `<DashboardTour />` guided narration that drives tab navigation as it speaks. All gated by `ELEVENLABS_API_KEY`.
+- [x] **Marketplace tab** — Phase 3, fully on-chain: scans `BuyerOffer` PDAs, supports post / cancel / match (creating an escrow `Deal` PDA via `create_deal`), seller releases via `confirm_and_release`. Released deals persisted in localStorage so released history survives PDA closure.
+- [x] **History tab** — real on-chain reads of past Grow Packs (3-season lookback) + marketplace-deal history scanned via `fetchDealsByWallet`.
+- [x] **No mock data on the dashboard.** ActiveTab, AlertsList, AboutTab, voice tour all read from `FarmerAccount` + `GrowPack` PDAs at page-load time. `ACTIVE_PACK` and `ALERTS` constants removed; empty states shown when nothing is on chain yet.
 - [x] **Routes — all working end-to-end against the deployed program:**
-  - `/` — dark-plum Mazra'at albaan landing
-  - `/login` · `/signup` · `/forgot-password` · `/reset-password` · `/auth/callback` — all with demo-mode bypass
-  - `/dashboard` — 3-column shell (left sidebar / profile + tabs / right rail) with **5 in-page tabs**: Active, Apply, Insurance, History, About. Compact profile (168 px height, 64 px avatar). Wallet item in left sidebar shows truncated pubkey when connected.
-  - `/grow-pack/new` — standalone wrapper around the shared `<ApplyTab />` for shareable URLs
-  - `/insurance/[packId]` — server-rendered shareable URL, dark-plum themed (matches dashboard tab visually)
-- [x] **No route hops from inside the dashboard.** Apply, Insurance, History, About all transform the middle column in place.
+  - `/` — dark-plum Mazra'at albaan landing with branded SVG mark
+  - `/login` · `/signup` · `/forgot-password` · `/reset-password` · `/auth/callback` — Supabase, with demo-mode bypass
+  - `/dashboard` — farmer surface, 3-column shell, **6 in-page nav targets**: Home, Apply for Pack, Insurance, Wallet (sidebar item only), Marketplace, plus the "Take a tour" voice trigger. The compact profile-header tabs are Active, Apply, Insurance, History, About.
+  - `/coop` — co-op admin (new)
+  - `/grow-pack/new` — standalone wrapper around `<ApplyTab />`
+  - `/insurance/[packId]` — server-rendered shareable URL, dark-plum themed
+  - `/api/tts` — server-side ElevenLabs proxy
+- [x] **No route hops from inside the dashboard.** Apply, Insurance, History, About, Marketplace, Wallet all transform the middle column in place. (`/coop` is a separate surface for staff.)
 - [x] Deployed to Vercel (Root Directory = `app/`, Framework = Next.js)
 
 ### Tests, all passing
 - 99 Vitest tests in root `tests/` — `core/` rules
 - 41 cargo unit tests + 3 litesvm integration tests in `programs/vuna/programs/vuna/` — Rust port + on-chain lifecycle
-- 25 Vitest tests in `app/src/lib/vuna/program.test.ts` — PDA derivation, pricing math, instruction-encoder byte layouts
-- **Total: 168 tests across 3 languages**
+- 40 Vitest tests in `app/src/lib/vuna/program.test.ts` — PDA derivation, pricing math, instruction-encoder byte layouts for **5 instructions** (register_farmer, request_grow_pack, approve_grow_pack, disburse_grow_pack, trigger_insurance_payout)
+- **Total: 183 tests across 3 languages**
 
 ### Not yet done
 - [ ] First insurer cold email sent — recommended first contact: LBIC
-- [ ] Custodial wallet (Magic.link / Privy) for the farmer-facing surface — currently only Phantom is wired
-- [ ] Co-op web dashboard (`/coop/*`) — entirely unbuilt
-- [ ] Marketplace surface (placeholder menu item with `"soon"` badge)
-- [ ] Real Supabase project linked + migrations applied
-- [ ] `api/` Node.js backend service
-- [ ] On-chain encoders for `approve_grow_pack` / `disburse_grow_pack` / `trigger_insurance_payout` / `settle_repayment` are inlined in `app/scripts/setup-devnet-demo.mjs` but not yet exposed from `lib/vuna/program.ts` — needed for a co-op dashboard
-- [ ] Farmer-history view (returning users, multi-pack list, credit-score chart)
+- [ ] Settle-repayment instruction encoder lifted into `lib/vuna/program.ts` (still inlined in `setup-devnet-demo.mjs`; only matters once we add the harvest-close UI)
+- [ ] Settle-repayment + farmer-registration UIs on `/coop`
+- [ ] `api/` Node.js backend service (KYC, supplier inventory, off-ramp reconciliation, POPIA logging)
+- [ ] Pack metadata persistence — crop name + hectares are entered in the apply form but discarded; no Supabase table for them yet, so the dashboard doesn't show "Maize · 2 ha" anywhere honest
 - [ ] isiZulu / isiXhosa localisation
 - [ ] USSD / feature-phone bridge
 - [ ] Audit the Anchor program before any mainnet deploy
+- [ ] Replace caller-as-attester in `trigger_insurance_payout` with a licensed-underwriter signing service once one is engaged
 
 ### ⚠️ Known stale docs
-- `docs/proposal.pdf` (§4 + §5) still names **Pyth** as the weather oracle. This is wrong — Pyth has no weather feeds. Do NOT regenerate the proposal PDF until we've decided the underwriter-attestation architecture in detail; otherwise we'll regenerate twice.
+- `docs/proposal.pdf` (§4 + §5) still names **Pyth** as the weather oracle. This is wrong — Pyth has no weather feeds. Do NOT regenerate the proposal PDF until we've finalised the underwriter-attestation architecture; otherwise we'll regenerate twice.
 
 When you change status, edit this section.
 
@@ -314,4 +337,4 @@ Re-read **§7 (Disadvantages)** and **§8 (Challenges)** of `docs/proposal.pdf`.
 
 ---
 
-*Last updated: 2026-05-08 by Tumo & Pitsi (with Claude).*
+*Last updated: 2026-05-10 by Tumo & Pitsi (with Claude).*

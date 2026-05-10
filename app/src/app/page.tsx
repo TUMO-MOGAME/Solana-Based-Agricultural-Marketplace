@@ -33,16 +33,17 @@ export default function WelcomePage() {
         {/* Top bar */}
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div
-              className="flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold"
+            <img
+              src="/brand/logo-mark.svg"
+              alt="Mazra'at albaan"
+              width={36}
+              height={36}
               style={{
-                background: "linear-gradient(135deg, #ff7b6b, #ffb86b)",
-                color: "#1a0f0c",
-                boxShadow: "0 8px 24px rgba(255, 123, 107, 0.3)",
+                borderRadius: 12,
+                boxShadow: "0 8px 24px rgba(0, 0, 0, 0.35)",
+                display: "block",
               }}
-            >
-              MA
-            </div>
+            />
             <span
               className="text-lg font-bold tracking-tight"
               style={{ color: "rgba(255, 245, 230, 0.95)" }}
