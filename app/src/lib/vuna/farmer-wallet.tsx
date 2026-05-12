@@ -51,9 +51,38 @@ function useFarmerWalletPrivy(): FarmerWallet {
   const { ready: privyReady, authenticated, user, login, logout } = usePrivy();
   const { ready: walletsReady, wallets } = useWallets();
 
-  // Privy lists every Solana wallet the user has connected. For an
-  // auto-created embedded wallet there'll be exactly one entry.
-  const wallet = wallets[0] ?? null;
+  // `useWallets()` returns EVERY Solana wallet Privy has detected as a
+  // Standard Wallet — including external ones like Phantom that happen
+  // to be installed in the same browser. Naively taking wallets[0]
+  // means every Supabase account ends up signing with whatever Phantom
+  // is connected to, instead of the per-email custodial wallet Privy
+  // auto-created for the current user.
+  //
+  // We instead look up the address of the embedded wallet tied to the
+  // logged-in Privy user (via `user.linkedAccounts`, filtered to the
+  // Solana embedded entry with `walletClientType === "privy"`), then
+  // pick the matching wallet from `wallets[]` so we have a signer.
+  const embeddedAddress = useMemo(() => {
+    const linked = user?.linkedAccounts;
+    if (!Array.isArray(linked)) return null;
+    for (const acc of linked) {
+      if (
+        acc &&
+        (acc as { type?: string }).type === "wallet" &&
+        (acc as { chainType?: string }).chainType === "solana" &&
+        (acc as { walletClientType?: string }).walletClientType === "privy"
+      ) {
+        const addr = (acc as { address?: unknown }).address;
+        if (typeof addr === "string" && addr.length > 0) return addr;
+      }
+    }
+    return null;
+  }, [user]);
+
+  const wallet = useMemo(() => {
+    if (!embeddedAddress) return null;
+    return wallets.find((w) => w.address === embeddedAddress) ?? null;
+  }, [embeddedAddress, wallets]);
 
   const publicKey = useMemo(() => {
     if (!wallet?.address) return null;
