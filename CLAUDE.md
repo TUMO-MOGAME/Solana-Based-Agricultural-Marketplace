@@ -13,7 +13,7 @@ A Solana-based agricultural marketplace for South African smallholder farmers, b
 - **User-facing brand:** *Mazra'at albaan* (page titles, dashboard headings, marketing copy)
 - **Internal codename / Solana program crate:** *Vuna* (matches the deployed program — do not rename)
 
-**Authors:** Tumo Mogame & Pitsi Kgaume
+**Author:** Tumo Mogame
 
 **One-sentence pitch:** *A phone app that gives small farmers seeds, fertilizer and drought insurance on credit, repaid at harvest, with insurance auto-paid by on-chain weather data — without ever showing the farmer the word "blockchain".*
 
@@ -366,4 +366,4 @@ Re-read **§7 (Disadvantages)** and **§8 (Challenges)** of `docs/proposal.pdf`.
 
 ---
 
-*Last updated: 2026-05-10 by Tumo & Pitsi (with Claude).*
+*Last updated: 2026-05-15 by Tumo (with Claude).*

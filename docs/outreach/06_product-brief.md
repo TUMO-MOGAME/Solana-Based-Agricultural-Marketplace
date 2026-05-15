@@ -129,10 +129,9 @@ We are happy to share our full regulatory analysis on request.
 
 ## 9. Team
 
-**Tumo Mogame** — Co-founder. [Background, qualifications, prior work — fill in.]
-**Pitsi Kgaume** — Co-founder. [Background, qualifications, prior work — fill in.]
+**Tumo Mogame** — Founder. [Background, qualifications, prior work — fill in.]
 
-We are early-stage. We do not pretend otherwise. Our product proposal, regulatory analysis, technical architecture, and outreach materials are documented; we are happy to share any of these in full.
+I am early-stage. I do not pretend otherwise. The product proposal, regulatory analysis, technical architecture, and outreach materials are documented; I am happy to share any of these in full.
 
 ## 10. Open questions for the underwriter
 
@@ -159,6 +158,6 @@ We are talking to a small number of South African agri-insurers in parallel and 
 
 ---
 
-**Tumo Mogame & Pitsi Kgaume**
-Co-founders, Project Vuna
+**Tumo Mogame**
+Founder, Project Vuna
 [Email] · [Phone]

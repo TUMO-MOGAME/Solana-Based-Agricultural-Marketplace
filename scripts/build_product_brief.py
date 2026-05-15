@@ -248,11 +248,10 @@ story = [
     p("Full regulatory analysis available on request.", SMALL),
 
     p("9. Team", H1),
-    p("<b>Tumo Mogame</b> — Co-founder. [Background, qualifications, prior work — to be completed.]"),
-    p("<b>Pitsi Kgaume</b> — Co-founder. [Background, qualifications, prior work — to be completed.]"),
-    p("We are early-stage. We do not pretend otherwise. Our product proposal, "
+    p("<b>Tumo Mogame</b> — Founder. [Background, qualifications, prior work — to be completed.]"),
+    p("I am early-stage. I do not pretend otherwise. The product proposal, "
       "regulatory analysis, technical architecture, and outreach materials are "
-      "documented; we are happy to share any of these in full."),
+      "documented; I am happy to share any of these in full."),
 
     p("10. Open questions for the underwriter", H1),
     numbered([
@@ -277,7 +276,7 @@ story = [
       "at this stage on either side."),
 
     Spacer(1, 0.6 * cm),
-    p("<b>Tumo Mogame &amp; Pitsi Kgaume</b> — Co-founders, Project Vuna", BODY),
+    p("<b>Tumo Mogame</b> — Founder, Project Vuna", BODY),
     p("[Email] · [Phone]", SMALL),
 ]
 
@@ -287,7 +286,7 @@ doc = SimpleDocTemplate(
     leftMargin=2 * cm, rightMargin=2 * cm,
     topMargin=2 * cm, bottomMargin=2 * cm,
     title="Vuna — Product Brief",
-    author="Tumo Mogame & Pitsi Kgaume",
+    author="Tumo Mogame",
 )
 doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
 print(f"Wrote {OUTPUT}")

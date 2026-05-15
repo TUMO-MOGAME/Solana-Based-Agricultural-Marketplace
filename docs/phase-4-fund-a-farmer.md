@@ -180,6 +180,6 @@ engineering off finishing the insurer + lending pilot to chase this.
 
 ---
 
-*Drafted: 2026-05-15 by Tumo & Pitsi (with Claude). Status: roadmap only —
+*Drafted: 2026-05-15 by Tumo (with Claude). Status: roadmap only —
 not implemented. Do not start work without re-reading the "0% principle"
 section.*

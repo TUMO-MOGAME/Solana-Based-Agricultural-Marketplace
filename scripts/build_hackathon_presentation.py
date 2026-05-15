@@ -234,8 +234,8 @@ story += [
     p("HACKATHON", COVER_LABEL),
     p("Solana 2026 Frontier — Physical World Applications", COVER_META),
     Spacer(1, 0.3 * cm),
-    p("AUTHORS", COVER_LABEL),
-    p("Tumo Mogame &middot; Pitsi Kgaume", COVER_META),
+    p("AUTHOR", COVER_LABEL),
+    p("Tumo Mogame", COVER_META),
     Spacer(1, 0.3 * cm),
     p("REPOSITORY", COVER_LABEL),
     p("github.com/TUMO-MOGAME/Solana-Based-Agricultural-Marketplace", COVER_META),
@@ -588,7 +588,7 @@ story += [
 
     Spacer(1, 0.4 * cm),
     p("Contact", H2),
-    p("Tumo Mogame &middot; Pitsi Kgaume", BODY_LEFT),
+    p("Tumo Mogame", BODY_LEFT),
     p("emma.m.strategy@gmail.com", BODY_LEFT),
     p("github.com/TUMO-MOGAME/Solana-Based-Agricultural-Marketplace", BODY_LEFT),
     p("solana-based-agricultural-marketpla.vercel.app", BODY_LEFT),
@@ -605,7 +605,7 @@ def main():
         leftMargin=2 * cm, rightMargin=2 * cm,
         topMargin=2 * cm, bottomMargin=2 * cm,
         title="Mazra'at albaan — Hackathon presentation",
-        author="Tumo Mogame & Pitsi Kgaume",
+        author="Tumo Mogame",
     )
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
     print(f"Wrote {OUTPUT}")

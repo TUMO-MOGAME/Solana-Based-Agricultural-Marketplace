@@ -16,9 +16,9 @@ We are NOT trying to close anything. We are trying to learn the shape of the dea
 
 ## Roles in the call
 
-- **Tumo:** lead the call. Open, frame the problem, ask the questions, close.
-- **Pitsi:** take notes. Watch for things Tumo misses. Speak up at the end.
-- Switch roles next call.
+- **Tumo:** lead the call solo. Open, frame the problem, ask the questions, close.
+- Record the call (with explicit permission) so you can review it afterwards — solo callers miss things in real time.
+- Take written notes during the call too, but rely on the recording for the detail.
 
 ## Opening (the first 90 seconds)
 

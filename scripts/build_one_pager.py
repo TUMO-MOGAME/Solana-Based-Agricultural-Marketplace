@@ -118,7 +118,7 @@ story = [
           style=TableStyle([("BACKGROUND", (0, 0), (-1, -1), RULE)])),
     Spacer(1, 0.2 * cm),
 
-    p("<b>Tumo Mogame &amp; Pitsi Kgaume</b> &mdash; Co-founders, Project Vuna",
+    p("<b>Tumo Mogame</b> &mdash; Founder, Project Vuna",
       FOOTER_NAME),
     p("[Email]&nbsp;&nbsp;&middot;&nbsp;&nbsp;[Phone]&nbsp;&nbsp;&middot;&nbsp;&nbsp;[LinkedIn]",
       SMALL),
@@ -130,7 +130,7 @@ doc = SimpleDocTemplate(
     leftMargin=2 * cm, rightMargin=2 * cm,
     topMargin=1.6 * cm, bottomMargin=1.6 * cm,
     title="Vuna — One-page summary",
-    author="Tumo Mogame & Pitsi Kgaume",
+    author="Tumo Mogame",
 )
 doc.build(story)
 print(f"Wrote {OUTPUT}")

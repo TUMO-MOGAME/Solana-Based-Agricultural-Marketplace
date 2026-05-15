@@ -9,7 +9,7 @@ Mazra'at albaan gives small farmers seeds, fertilizer, and drought insurance on 
 
 Built for the **Solana 2026 Frontier Hackathon — Physical World Applications track**.
 
-**Authors:** Tumo Mogame & Pitsi Kgaume
+**Author:** Tumo Mogame
 
 ---
 

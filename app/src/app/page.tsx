@@ -165,7 +165,7 @@ export default function WelcomePage() {
           }}
         >
           <span>&copy; {new Date().getFullYear()} Mazra&apos;at albaan</span>
-          <span>Tumo Mogame &amp; Pitsi Kgaume</span>
+          <span>Tumo Mogame</span>
         </footer>
       </div>
     </main>

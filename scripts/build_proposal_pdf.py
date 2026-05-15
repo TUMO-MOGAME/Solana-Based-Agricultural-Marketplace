@@ -1,6 +1,6 @@
 """
 Generates docs/proposal.pdf
-Authors: Tumo Mogame & Pitsi Kgaume
+Author: Tumo Mogame
 Run from anywhere: `python scripts/build_proposal_pdf.py`
 """
 
@@ -115,7 +115,7 @@ def on_page(canv: canvas.Canvas, doc):
     canv.saveState()
     canv.setFont("Helvetica", 8)
     canv.setFillColor(colors.HexColor("#666666"))
-    canv.drawString(2 * cm, 1.2 * cm, "Project Vuna  |  Tumo Mogame & Pitsi Kgaume")
+    canv.drawString(2 * cm, 1.2 * cm, "Project Vuna  |  Tumo Mogame")
     canv.drawRightString(A4[0] - 2 * cm, 1.2 * cm, f"Page {doc.page}")
     canv.restoreState()
 
@@ -130,7 +130,7 @@ story += [
     Spacer(1, 0.6 * cm),
     p("Hackathon Proposal &amp; Build Plan", SUBTITLE),
     Spacer(1, 2.5 * cm),
-    p("Authors: Tumo Mogame &amp; Pitsi Kgaume", AUTHOR),
+    p("Author: Tumo Mogame", AUTHOR),
     p(f"Date: {date.today().strftime('%d %B %Y')}", AUTHOR),
     p("Built for the Solana 2026 Frontier Hackathon &mdash; Physical World Applications track", AUTHOR),
     Spacer(1, 3 * cm),
@@ -304,7 +304,7 @@ story += [
     table(wrap_cells([
         ["Layer", "Choice", "Why"],
         ["Blockchain", "Solana", "Sub-cent fees, sub-second finality (Alpenglow), strong RWA and stablecoin tooling, hackathon target."],
-        ["Smart contracts", "Anchor (Rust)", "Standard for Solana, well-documented, Tumo and Pitsi can ramp on it."],
+        ["Smart contracts", "Anchor (Rust)", "Standard for Solana, well-documented, Tumo can ramp on it."],
         ["Oracle", "Pyth Network", "Native to Solana, weather feeds available, low latency."],
         ["Frontend (MVP)", "Next.js + Tailwind", "Fastest path to a credible demo. Solid wallet adapter ecosystem."],
         ["Frontend (prod)", "React Native PWA", "Real reach to mobile users; offline-first sync."],
@@ -445,7 +445,7 @@ story += [
     p("Week 1 &mdash; Research, validation, scaffolding", H2),
     bullets([
         "Confirm hackathon track, rules, and submission requirements.",
-        "Conduct 3&ndash;5 conversations: an agronomist, a cooperative leader, and at least one smallholder farmer (Tumo / Pitsi network).",
+        "Conduct 3&ndash;5 conversations: an agronomist, a cooperative leader, and at least one smallholder farmer (Tumo's network).",
         "Lock the demo crop (default: maize) and region (default: Eastern Cape).",
         "Define the exact MVP user journey end-to-end on a whiteboard.",
         "Set up monorepo, project board, weekly retro cadence, shared comms.",
@@ -550,7 +550,7 @@ story += [
         "If it does not, the failure modes hurt real people and we should plan accordingly.",
     ),
     Spacer(1, 0.6 * cm),
-    p("&mdash; Tumo Mogame &amp; Pitsi Kgaume", AUTHOR),
+    p("&mdash; Tumo Mogame", AUTHOR),
 ]
 
 # Sources / appendix
@@ -583,7 +583,7 @@ doc = SimpleDocTemplate(
     leftMargin=2 * cm, rightMargin=2 * cm,
     topMargin=2 * cm, bottomMargin=2 * cm,
     title="Project Vuna Proposal",
-    author="Tumo Mogame & Pitsi Kgaume",
+    author="Tumo Mogame",
 )
 
 doc.build(story, onFirstPage=on_page, onLaterPages=on_page)

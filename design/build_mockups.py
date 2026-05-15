@@ -463,7 +463,7 @@ def build_mobile():
            "Farmer-facing app.  Designed mobile-first.  No mention of crypto, wallets, or stablecoins.",
            fill=INK_SOFT, font=font(15))
     d.text((pad, pad + 70),
-           "Authors: Tumo Mogame & Pitsi Kgaume",
+           "Author: Tumo Mogame",
            fill=INK_FAINT, font=font(13))
 
     # Place screens
@@ -607,7 +607,7 @@ def build_web():
 
     rows = [
         ("Nomsa Dlamini",   "Maize",   "2.0",  "Day 60",  "On track",       "720",  GREEN),
-        ("Pitsi Mokoena",   "Maize",   "1.5",  "Day 24",  "On track",       "650",  GREEN),
+        ("Lerato Mokoena",  "Maize",   "1.5",  "Day 24",  "On track",       "650",  GREEN),
         ("Sipho Khumalo",   "Beans",   "0.8",  "Day 90",  "Drought paid",   "680",  WARN),
         ("Thandi Nkosi",    "Maize",   "3.2",  "Day 60",  "On track",       "740",  GREEN),
         ("Lebo Mthembu",    "Sorghum", "1.0",  "Day 45",  "Late inputs",    "590",  WARN),
@@ -663,7 +663,7 @@ def build_web():
     activity = [
         ("09:42",  "Nomsa Dlamini",  "Insurance payout R 1,400"),
         ("08:15",  "Sipho Khumalo",  "Repayment received R 2,240"),
-        ("Yest.",  "Pitsi Mokoena",  "Grow Pack approved · R 1,655"),
+        ("Yest.",  "Lerato Mokoena", "Grow Pack approved · R 1,655"),
         ("Yest.",  "Thandi Nkosi",   "Fertilizer delivery confirmed"),
     ]
     for i, (t, who, what) in enumerate(activity):
@@ -674,7 +674,7 @@ def build_web():
 
     # Footer note
     d.text((40, H - 24),
-           "Authors: Tumo Mogame & Pitsi Kgaume",
+           "Author: Tumo Mogame",
            fill=INK_FAINT, font=font(11))
 
     out = os.path.join(OUT_DIR, "web.png")

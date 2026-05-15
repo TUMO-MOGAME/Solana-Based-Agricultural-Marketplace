@@ -47,7 +47,7 @@ A 30-minute introductory conversation in the next two weeks.
 
 ### Contact
 
-**Tumo Mogame & Pitsi Kgaume**
+**Tumo Mogame**
 [Email]
 [Phone]
 [LinkedIn]

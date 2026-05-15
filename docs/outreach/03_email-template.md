@@ -12,7 +12,7 @@ Use this as a starting point. Customise the **bracketed sections** per insurer u
 
 Dear [Recipient first name],
 
-I hope this finds you well. My name is **[Tumo Mogame / Pitsi Kgaume]**, and together with my co-founder [the other name] I am building **Project Vuna** — a digital platform aimed at bringing credit, certified inputs, and parametric drought insurance to South African smallholder farmers, beginning with maize in the Eastern Cape.
+I hope this finds you well. My name is **Tumo Mogame**, and I am building **Project Vuna** — a digital platform aimed at bringing credit, certified inputs, and parametric drought insurance to South African smallholder farmers, beginning with maize in the Eastern Cape.
 
 We are not seeking to underwrite the insurance ourselves. Under the FAIS Act and the Insurance Act 2017, that requires a licensed underwriter, which is why I am writing to you. **[Insurer name]** stands out to us because **[customised reason — see 01_insurer-targets.md for the angle]**.
 
