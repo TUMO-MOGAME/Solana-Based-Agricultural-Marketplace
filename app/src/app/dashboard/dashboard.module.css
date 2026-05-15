@@ -1,7 +1,6 @@
-/* Social Assembly Dashboard shell — ULTRANET-style layout reskinned in the
-   auth-page theme. Dark plum base, coral-amber accents, glass cards with
-   backdrop-blur, SVG noise overlay, Inter font. The chat column embeds the
-   existing A2AChat (Phase 1); Phase 2 swaps it for a native composer. */
+/* Mazra'at albaan dashboard shell — 3-column layout: sidebar, profile +
+   tabbed content, right rail. Dark plum base, coral-amber accents, glass
+   cards with backdrop-blur, Inter font. */
 
 .container {
   position: relative;
@@ -228,7 +227,7 @@
   border: 1px solid rgba(255, 184, 107, 0.2);
 }
 
-/* Bottom CTA card — hint to link out, mirrors ULTRANET's "follow me" block */
+/* Bottom CTA card — links out to the "About the platform" landing page */
 .sidebarFooter {
   margin-top: auto;
   padding: 14px 16px 18px;

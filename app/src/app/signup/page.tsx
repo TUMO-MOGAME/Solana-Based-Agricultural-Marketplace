@@ -120,7 +120,7 @@ export default function SignupPage() {
               autoComplete="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Emma Matlhaga"
+              placeholder="Tumo Mogame"
               className={styles.input}
               required
             />
@@ -139,7 +139,7 @@ export default function SignupPage() {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@socialassembly.co"
+              placeholder="you@example.com"
               className={styles.input}
               required
             />

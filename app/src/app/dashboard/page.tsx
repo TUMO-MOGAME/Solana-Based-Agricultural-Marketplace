@@ -2,12 +2,9 @@
 
 // Mazra'at albaan — dashboard.
 //
-// Layout reuses the lifted Social Assembly dashboard shell (left sidebar /
-// profile header / right rail) so visual styling stays consistent. The panel
-// modules from the original (session chat, journey, exemplar, pipeline,
-// artifact, video) were Social-Assembly-specific and have been removed.
-// Right rail is now a simple inline alerts list — drought triggers,
-// repayment reminders, supplier updates.
+// 3-column shell: left sidebar / profile header + tabbed content / right rail.
+// Right rail is a simple inline alerts list — drought triggers, repayment
+// reminders, supplier updates.
 //
 // Auth: when Supabase env vars are missing we render a stub user; once
 // configured the real auth flow takes over.

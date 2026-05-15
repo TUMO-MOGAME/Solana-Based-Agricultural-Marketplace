@@ -4,9 +4,9 @@ Next.js frontend for **Mazra'at albaan** (codename: **Vuna**). Deployed to Verce
 
 ## Status (2026-05-10)
 
-Originally lifted on 2026-05-07 from a separate Next.js + Supabase project ("Social Assembly") for the auth + dashboard shell. Heavily refactored since:
+Scaffolded 2026-05-07 — Next.js + Supabase auth + dashboard shell. Heavily refactored since:
 
-- **Stripped** of the Social Assembly cruft (38+ files: coach-chat, CopilotKit, orchestrator, video-panel, journey/exemplar/pipeline panels, marketing/about/team pages, agent-only Supabase migrations, ~2.9 MB of unused images). `dashboard.module.css` trimmed from 5,293 → ~970 lines.
+- **Stripped** of unused panels (38+ files: coach-chat, CopilotKit, orchestrator, video-panel, journey/exemplar/pipeline panels, marketing/about/team pages, agent-only Supabase migrations, ~2.9 MB of unused images). `dashboard.module.css` trimmed from 5,293 → ~970 lines.
 - **Rebranded** to Mazra'at albaan with the designed logo SVG/PNG mark in `public/brand/`. Visual theme: dark plum (`#1a0f0c`) base + coral-amber (`#ff7b6b → #ffb86b`) gradient accents.
 - **Wired to Solana** — `lib/vuna/program.ts` has hand-rolled Borsh decoders + instruction encoders for the deployed program at `7LUkUHVazSw732334JKFP88VAFc4iYXXJZkgFnZV9kqA` on devnet. **40** Vitest tests cover PDA derivation + pricing math + ix byte layouts for 5 instructions.
 - **Two wallet stacks, side-by-side:**
@@ -41,7 +41,7 @@ Originally lifted on 2026-05-07 from a separate Next.js + Supabase project ("Soc
 | `src/app/dashboard/page.tsx` | Farmer dashboard with all 5 in-page tabs. Reads on-chain `FarmerAccount` + `GrowPack` once at page level, threads to `ActiveTab` + `AlertsList` + `AboutTab` via props. No `ACTIVE_PACK` / `ALERTS` mock — gone. |
 | `src/app/dashboard/apply-tab.tsx` | The Grow Pack application form (used by both dashboard tab AND `/grow-pack/new`) |
 | `src/app/dashboard/marketplace-tab.tsx` | Phase-3 marketplace: scans `BuyerOffer` PDAs, posts / cancels / matches them, escrow `Deal` flow, real on-chain everywhere |
-| `src/app/dashboard/dashboard.module.css` | Dashboard CSS — ~970 lines after the Social Assembly trim |
+| `src/app/dashboard/dashboard.module.css` | Dashboard CSS — ~970 lines |
 | `src/app/dashboard/loading.tsx` | Minimal Mazra'at albaan loading pill |
 | `src/app/coop/page.tsx` | Co-op admin page (Phantom). Three on-chain queues + actions. |
 | `src/app/insurance/[packId]/page.tsx` | Server-rendered shareable insurance view |

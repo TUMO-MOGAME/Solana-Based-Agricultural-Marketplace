@@ -589,7 +589,7 @@ story += [
     Spacer(1, 0.4 * cm),
     p("Contact", H2),
     p("Tumo Mogame", BODY_LEFT),
-    p("emma.m.strategy@gmail.com", BODY_LEFT),
+    p("[contact email]", BODY_LEFT),
     p("github.com/TUMO-MOGAME/Solana-Based-Agricultural-Marketplace", BODY_LEFT),
     p("solana-based-agricultural-marketpla.vercel.app", BODY_LEFT),
 ]

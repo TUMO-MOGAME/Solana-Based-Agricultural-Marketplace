@@ -14,10 +14,10 @@ Next.js frontend for **Mazra'at albaan** — two surfaces, one codebase: a farme
 
 ## Status
 
-Originally lifted from a separate Next.js + Supabase project on 2026-05-07, then heavily restructured for Vuna. As of **2026-05-10** it's:
+Scaffolded 2026-05-07 from a Next.js + Supabase starter, then heavily restructured for Vuna. As of **2026-05-15** it's:
 
-- Fully rebranded to Mazra'at albaan with the designed logo SVG/PNG mark in `public/brand/`
-- Stripped of all Social-Assembly-specific code
+- Fully branded as Mazra'at albaan with the designed logo SVG/PNG mark in `public/brand/`
+- Stripped of all scaffolding code unused by Mazra'at albaan
 - Wired to the deployed Solana program via hand-rolled Borsh decoders
 - **Custodial farmer wallet via Privy** (email-OTP → embedded Solana wallet, no seed phrase) — env-var gated; falls back to wallet-adapter when not configured
 - **Wallet-adapter (Phantom + Solflare)** kept for the co-op surface (`/coop`) — staff sign approvals / disbursements / drought-payout triggers themselves

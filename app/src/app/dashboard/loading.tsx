@@ -3,9 +3,9 @@
 // coral-amber theme so the user never sees a bright white flash.
 //
 // Deliberately minimal — just the dark base + a soft "loading" pill.
-// We don't render the full skeleton because the dashboard is currently
-// hardcoded data and resolves instantly; an over-decorated skeleton
-// flashes longer than the real page.
+// We don't render the full skeleton because the dashboard's first paint
+// resolves quickly once the on-chain reads come back; an over-decorated
+// skeleton flashes longer than the real page.
 
 export default function DashboardLoading() {
   return (

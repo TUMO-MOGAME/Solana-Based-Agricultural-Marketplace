@@ -197,7 +197,7 @@ Scope discipline matters. If a new idea expands one of these boundaries, push ba
 
 ### Palette — what's where
 
-The shipped frontend uses the **dark-plum + coral-amber theme** inherited from the Social-Assembly shell we lifted on 2026-05-07. The `design/palette.md` file captures the *original* Mazra'at albaan brand palette (cream/forest-green/gold) used in `design/mockups/`. Both exist on purpose — mockups are the brand reference; the shipped UI optimised for visual coherence with the auth + dashboard chrome we kept.
+The shipped frontend uses the **dark-plum + coral-amber theme**. The `design/palette.md` file captures the *original* Mazra'at albaan brand palette (cream/forest-green/gold) used in `design/mockups/`. Both exist on purpose — mockups are the brand reference; the shipped UI optimised for visual coherence with the auth + dashboard chrome.
 
 | Where used | Tokens |
 |-|-|
@@ -289,8 +289,8 @@ We hold these licences ourselves OR partner with someone who does. No shortcuts.
 - [x] Demo data setup script (`app/scripts/setup-devnet-demo.mjs`) — registers a farmer, requests + approves + disburses a Grow Pack, fires a 40% rainfall trigger
 
 ### Done — frontend
-- [x] Lifted Next.js + Supabase shell from "Social Assembly" project on 2026-05-07
-- [x] Stripped 38+ files of agent-backend cruft, trimmed dashboard CSS 5293 → 945 lines, removed ~2.9 MB of unused assets
+- [x] Next.js + Supabase shell scaffolded 2026-05-07
+- [x] Stripped 38+ files of unused panels, trimmed dashboard CSS 5293 → 945 lines, removed ~2.9 MB of unused assets
 - [x] Rebranded to **Mazra'at albaan** (page titles, auth pages, root landing, dashboard chrome, favicon, branded logo SVG/PNG mark in `app/public/brand/`)
 - [x] Made Supabase optional with demo-mode fallback (no env vars → stub user) — and wired to a real Supabase project (`ewsqeqlffromnxogtubj`) with all 3 migrations applied
 - [x] **Custodial farmer wallet via Privy** — `lib/vuna/farmer-wallet.tsx` exposes `useFarmerWallet()` matching the wallet-adapter shape; under the hood it routes to Privy email-OTP + auto-created embedded Solana wallet when `NEXT_PUBLIC_PRIVY_APP_ID` is set, else falls back to wallet-adapter / Phantom. All 5 `useWallet()` call sites migrated. Privy provider config wires `toSolanaWalletConnectors()` + `solana.rpcs[devnet]` (built with `@solana/kit`).
