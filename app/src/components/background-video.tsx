@@ -30,7 +30,7 @@ export function BackgroundVideo() {
         loop
         playsInline
         preload="auto"
-        poster="/media/farmer-bg-poster.jpg"
+        poster="/media/farmer-bg-poster.webp"
         style={{
           width: "100%",
           height: "100%",

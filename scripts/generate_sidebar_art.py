@@ -14,7 +14,9 @@ The API key is read from the environment so it never lands in git.
 import base64
 import json
 import os
+import subprocess
 import sys
+import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -25,9 +27,11 @@ ENDPOINT = (
 
 OUT_DIR = Path(__file__).resolve().parents[1] / "app" / "public" / "media"
 
+WEBP_QUALITY = "82"  # passed to ffmpeg's libwebp; 80-85 is the sweet spot
+
 JOBS = [
     {
-        "name": "sidebar-left.jpg",
+        "name": "sidebar-left.webp",
         "prompt": (
             "Cinematic portrait photograph of a South African smallholder "
             "farmer standing among rows of maize at golden hour, warm amber "
@@ -39,7 +43,7 @@ JOBS = [
         ),
     },
     {
-        "name": "sidebar-right.jpg",
+        "name": "sidebar-right.webp",
         "prompt": (
             "Cinematic vertical photograph of an African farmer woman "
             "walking through a wheat field at sunrise, golden side light, "
@@ -92,9 +96,40 @@ def main() -> int:
     for job in JOBS:
         print(f"generating {job['name']}…", flush=True)
         data = call_api(api_key, job["prompt"])
-        out = OUT_DIR / job["name"]
-        out.write_bytes(data)
-        print(f"  wrote {out}  ({len(data) // 1024} KB)", flush=True)
+
+        # Imagen returns PNG/JPEG bytes. Convert to WebP via ffmpeg so the
+        # served file is ~10x smaller than the raw API output.
+        with tempfile.NamedTemporaryFile(
+            suffix=".jpg", delete=False
+        ) as tmp:
+            tmp.write(data)
+            tmp_path = tmp.name
+        try:
+            out = OUT_DIR / job["name"]
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    tmp_path,
+                    "-c:v",
+                    "libwebp",
+                    "-quality",
+                    WEBP_QUALITY,
+                    "-compression_level",
+                    "6",
+                    str(out),
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            print(
+                f"  wrote {out}  ({out.stat().st_size // 1024} KB)",
+                flush=True,
+            )
+        finally:
+            os.unlink(tmp_path)
 
     print("done.")
     return 0
