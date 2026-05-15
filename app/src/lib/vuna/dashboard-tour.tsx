@@ -91,7 +91,14 @@ const TOUR_STEPS: Step[] = [
     label: "Marketplace",
     tab: "marketplace",
     text: () =>
-      `When your harvest is ready, you list it here. Buyers pay you direct, in Rand — no middlemen taking forty percent of what you grew.`,
+      `Mills, retailers, and brewers post prices here. When your harvest is ready, you tap Match on a fair offer. The buyer's money is locked in a safe box until you deliver — then it flies to your account. No middlemen taking forty percent of what you grew.`,
+  },
+  {
+    id: "history",
+    label: "History",
+    tab: "history",
+    text: () =>
+      `Every season you finish well is remembered here — your past packs, your repayments, your drought payouts. This is your credit history, built one harvest at a time, and it follows you wherever you go.`,
   },
   {
     id: "close",

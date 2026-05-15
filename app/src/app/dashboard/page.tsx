@@ -1605,6 +1605,7 @@ type HistoryRow = {
   season: number;
   address: string;
   pack: GrowPack;
+  meta: PackMeta | null;
 };
 
 function HistoryTab({ onViewPack }: { onViewPack: () => void }) {
@@ -1637,12 +1638,17 @@ function HistoryTab({ onViewPack }: { onViewPack: () => void }) {
 
         // Fetch every season in parallel — devnet RPC handles this fine
         // for a small number of accounts and the pack PDAs we don't have
-        // simply come back as nulls.
+        // simply come back as nulls. pack_meta is fetched alongside so
+        // History can show crop + hectares for each season.
         const fetched = await Promise.all(
           seasons.map(async (season) => {
             const [packAcc] = packPda(farmerAcc, season);
-            const data = await fetchGrowPack(conn, packAcc);
-            return { season, address: packAcc.toBase58(), data };
+            const address = packAcc.toBase58();
+            const [data, meta] = await Promise.all([
+              fetchGrowPack(conn, packAcc),
+              fetchPackMeta(address),
+            ]);
+            return { season, address, data, meta };
           }),
         );
 
@@ -1650,10 +1656,10 @@ function HistoryTab({ onViewPack }: { onViewPack: () => void }) {
 
         const existing: HistoryRow[] = fetched
           .filter(
-            (r): r is { season: number; address: string; data: GrowPack } =>
+            (r): r is { season: number; address: string; data: GrowPack; meta: PackMeta | null } =>
               r.data !== null,
           )
-          .map(({ season, address, data }) => ({ season, address, pack: data }));
+          .map(({ season, address, data, meta }) => ({ season, address, pack: data, meta }));
 
         setRows(existing);
         setState(existing.length > 0 ? "ready" : "empty");
@@ -2008,9 +2014,17 @@ function DealHistoryCard({
 }
 
 function HistoryCard({ row, onView }: { row: HistoryRow; onView: () => void }) {
-  const { season, address, pack } = row;
+  const { season, address, pack, meta } = row;
   const currentYear = new Date().getFullYear();
   const isCurrent = season === currentYear;
+
+  // settle_repayment has fired if any of these post-harvest fields are
+  // non-zero — the on-chain struct zero-initialises them, so any value
+  // means the cooperative ran settle_repayment.
+  const isClosed =
+    pack.status === "Repaid" || pack.status === "Defaulted";
+  const showSettleDetail =
+    isClosed || pack.saleProceeds > 0n || pack.repaid > 0n;
 
   return (
     <div className={styles.box}>
@@ -2022,12 +2036,45 @@ function HistoryCard({ row, onView }: { row: HistoryRow; onView: () => void }) {
       </div>
       <div className={styles.boxBody}>
         <DetailRow label="Status" value={pack.status} highlight />
+        {meta ? (
+          <DetailRow
+            label="Crop"
+            value={`${meta.crop} · ${meta.hectares} ha`}
+          />
+        ) : null}
         <DetailRow label="Bundle cost" value={formatRand(pack.bundleCost)} />
         <DetailRow label="Total repayment" value={formatRand(pack.totalRepayment)} />
-        <DetailRow
-          label="Insurance payout"
-          value={formatRand(pack.insurancePayout)}
-        />
+        {pack.insurancePayout > 0n ? (
+          <DetailRow
+            label="Insurance payout"
+            value={formatRand(pack.insurancePayout)}
+          />
+        ) : null}
+        {showSettleDetail ? (
+          <>
+            <DetailRow
+              label="Harvest sale"
+              value={formatRand(pack.saleProceeds)}
+            />
+            <DetailRow
+              label="Repaid"
+              value={formatRand(pack.repaid)}
+              highlight
+            />
+            {pack.surplus > 0n ? (
+              <DetailRow
+                label="Surplus to you"
+                value={formatRand(pack.surplus)}
+              />
+            ) : null}
+            {pack.defaulted > 0n ? (
+              <DetailRow
+                label="Outstanding"
+                value={formatRand(pack.defaulted)}
+              />
+            ) : null}
+          </>
+        ) : null}
         <DetailRow label="Pack" value={shortPackId(address)} mono />
         {isCurrent ? (
           <button
