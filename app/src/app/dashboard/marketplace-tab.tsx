@@ -64,6 +64,7 @@ import {
   randomDealId,
   type DemoDeal,
 } from "@/lib/vuna/demo-deals";
+import { useT } from "@/lib/i18n/provider";
 import styles from "./dashboard.module.css";
 
 const ZAR = new Intl.NumberFormat("en-ZA", { maximumFractionDigits: 0 });
@@ -86,6 +87,7 @@ type OfferRow = {
 export function MarketplaceTab() {
   const { publicKey, sendTransaction } = useFarmerWallet();
   const { connection } = useConnection();
+  const { t } = useT();
 
   const [deals, setDeals] = useState<ActiveDeal[]>([]);
   const [offers, setOffers] = useState<OfferRow[]>([]);
@@ -296,12 +298,12 @@ export function MarketplaceTab() {
       >
         <div className={styles.sessionEyebrow}>
           <span className={styles.sessionDot} />
-          Direct buyers — no middlemen
+          {t("marketplace.no_middlemen")}
         </div>
         <h3 className={styles.sessionTitle}>
           {avgSavingsPct !== null
-            ? `Sell direct for ${avgSavingsPct}% more.`
-            : "Skip the middleman."}
+            ? `+${avgSavingsPct}%`
+            : t("marketplace.skip")}
         </h3>
         <p className={styles.sessionSubtitle}>
           Mills, retailers and brewers post offers on-chain. Tap{" "}

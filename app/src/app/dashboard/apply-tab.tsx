@@ -30,6 +30,7 @@ import {
   fetchGrowPack,
 } from "@/lib/vuna/program";
 import { savePackMeta, type Crop } from "@/lib/supabase/pack-meta";
+import { useT } from "@/lib/i18n/provider";
 import styles from "./dashboard.module.css";
 
 const DEFAULT_SEED_COST = 420;
@@ -69,6 +70,7 @@ export function ApplyTab({ onSuccess, onNavigateToInsurance }: ApplyTabProps) {
   const { connection } = useConnection();
   const { publicKey, sendTransaction, connecting, connect: connectWallet } =
     useFarmerWallet();
+  const { t } = useT();
 
   const [crop, setCrop] = useState("Maize");
   const [hectares, setHectares] = useState("2.0");
@@ -203,10 +205,10 @@ export function ApplyTab({ onSuccess, onNavigateToInsurance }: ApplyTabProps) {
         >
           <div className={styles.sessionEyebrow}>
             <span className={styles.sessionDot} />
-            Submitted
+            {t("apply.submitted")}
           </div>
           <h3 className={styles.sessionTitle}>
-            Your Grow Pack request is on chain.
+            {t("apply.submitted.title")}
           </h3>
           <p className={styles.sessionSubtitle}>
             The cooperative reviews requests within 48 hours. You&apos;ll get
@@ -249,11 +251,11 @@ export function ApplyTab({ onSuccess, onNavigateToInsurance }: ApplyTabProps) {
           {/* Crop + region + hectares column */}
           <div className={styles.box}>
             <div className={styles.boxHeader}>
-              <h2 className={styles.boxTitle}>Plan next season</h2>
-              <span className={styles.boxLabel}>Apply</span>
+              <h2 className={styles.boxTitle}>{t("apply.title")}</h2>
+              <span className={styles.boxLabel}>{t("tab.apply")}</span>
             </div>
             <div className={styles.boxBody} style={{ display: "grid", gap: 10 }}>
-              <Field label="Crop">
+              <Field label={t("apply.crop")}>
                 <select
                   value={crop}
                   onChange={(e) => setCrop(e.target.value)}
@@ -265,7 +267,7 @@ export function ApplyTab({ onSuccess, onNavigateToInsurance }: ApplyTabProps) {
                 </select>
               </Field>
               <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
-                <Field label="Hectares">
+                <Field label={t("apply.hectares")}>
                   <input
                     type="number"
                     step="0.1"
@@ -276,7 +278,7 @@ export function ApplyTab({ onSuccess, onNavigateToInsurance }: ApplyTabProps) {
                     style={fieldInput}
                   />
                 </Field>
-                <Field label="Region">
+                <Field label={t("apply.region")}>
                   <select
                     value={region}
                     onChange={(e) => setRegion(Number(e.target.value))}
@@ -303,17 +305,17 @@ export function ApplyTab({ onSuccess, onNavigateToInsurance }: ApplyTabProps) {
             </div>
             <div style={{ display: "grid", gap: 2, marginTop: 8 }}>
               <BundleRow
-                label="Certified seed"
+                label={t("apply.bundle.seed")}
                 cost={seedCost}
                 setCost={setSeedCost}
               />
               <BundleRow
-                label="Fertilizer"
+                label={t("apply.bundle.fertilizer")}
                 cost={fertilizerCost}
                 setCost={setFertilizerCost}
               />
               <BundleRow
-                label="Drought insurance"
+                label={t("apply.bundle.insurance")}
                 cost={insuranceCost}
                 setCost={setInsuranceCost}
               />
@@ -329,7 +331,7 @@ export function ApplyTab({ onSuccess, onNavigateToInsurance }: ApplyTabProps) {
               }}
             >
               <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255, 245, 230, 0.95)" }}>
-                Total today
+                {t("apply.total")}
               </span>
               <span
                 style={{
@@ -344,7 +346,7 @@ export function ApplyTab({ onSuccess, onNavigateToInsurance }: ApplyTabProps) {
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
               <span style={{ fontSize: 11, color: "rgba(255, 230, 210, 0.55)" }}>
-                Repay at harvest
+                {t("apply.repay")}
               </span>
               <span
                 style={{
@@ -429,12 +431,12 @@ export function ApplyTab({ onSuccess, onNavigateToInsurance }: ApplyTabProps) {
             {busy ? (
               <>
                 <Loader2 size={14} className="animate-spin" />
-                Submitting…
+                {t("apply.submitting")}
               </>
             ) : !publicKey ? (
-              <>Connect wallet to apply <ArrowRight size={14} /></>
+              <>{t("apply.connect")} <ArrowRight size={14} /></>
             ) : (
-              <>Apply for this Grow Pack <ArrowRight size={14} /></>
+              <>{t("apply.submit")} <ArrowRight size={14} /></>
             )}
           </button>
         </div>
@@ -447,7 +449,7 @@ export function ApplyTab({ onSuccess, onNavigateToInsurance }: ApplyTabProps) {
             letterSpacing: "0.04em",
           }}
         >
-          Your cooperative reviews requests within 48 hours.
+          {t("apply.review")}
         </p>
       </form>
     </div>

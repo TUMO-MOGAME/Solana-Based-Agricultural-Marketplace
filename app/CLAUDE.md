@@ -147,7 +147,7 @@ In rough order of impact:
 2. **Oracle architecture decision** — `trigger_insurance_payout` currently accepts the rainfall % from the cooperative; replace with a licensed-underwriter signing service when one is engaged. See `spikes/oracle-check/FINDINGS.md`.
 3. **`api/` Node.js backend** — empty scaffold. Needed for KYC, supplier inventory, off-ramp reconciliation, POPIA-compliant logging. Biggest remaining scope; needs its own scoping doc before code starts.
 4. **`/coop` extras** — audit log, multi-wallet farmer/buyer impersonation for demo. (settle_repayment UI + farmer-registration UI ✅ shipped 2026-05-15.)
-5. **isiZulu / isiXhosa localisation.**
+5. **Native-speaker review of i18n strings** — all 11 SA official languages wired (`lib/i18n/`); confidence is high on English / Afrikaans / isiZulu / isiXhosa / Sesotho / Setswana, lower on Sepedi / siSwati / isiNdebele / Tshivenda / Xitsonga. Needs review before any real-farmer pilot.
 6. **USSD / feature-phone bridge.**
 7. **Audit the Anchor program** before any mainnet deploy.
 
@@ -157,3 +157,4 @@ In rough order of impact:
 - ✅ Settle-repayment UI on `/coop` ("Harvest close" section)
 - ✅ Farmer-registration UI on `/coop` (`<RegisterFarmerPanel>`)
 - ✅ Phase 4 Fund-a-Farmer roadmap doc + 0% principle locked
+- ✅ Full 11-language i18n for the farmer surface (sidebar language picker)

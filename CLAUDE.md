@@ -336,6 +336,26 @@ We hold these licences ourselves OR partner with someone who does. No shortcuts.
 ### ⚠️ Known stale docs
 - `docs/proposal.pdf` (§4 + §5) still names **Pyth** as the weather oracle. This is wrong — Pyth has no weather feeds. Do NOT regenerate the proposal PDF until we've finalised the underwriter-attestation architecture; otherwise we'll regenerate twice.
 
+### Translation review (i18n)
+
+All 11 South African official languages are wired in `app/src/lib/i18n/` —
+keys are stable, the `t()` helper falls back to English on any miss, and a
+language picker sits in the dashboard sidebar.
+
+**Confidence levels:**
+- **HIGH** — `en`, `af`. Safe to ship.
+- **MEDIUM** — `zu`, `xh`, `st`, `tn`. Usable for demo. Should be reviewed before a real pilot.
+- **LOW** — `nso`, `ss`, `nr`, `ve`, `ts`. Best-effort. **Must** be reviewed before any farmer-facing pilot — wrong words for "insurance" or "harvest" in a farmer's home language is worse than English. Marked with a trailing `*` in the language picker.
+
+Bringing a co-op partner on board? Ask them to nominate native speakers for
+each language they operate in. Two-hour review per language is usually
+enough to lift the LOW set to MEDIUM. Update the `reviewed` flag in
+`app/src/lib/i18n/locales.ts` once confirmed.
+
+Voice (ElevenLabs) currently plays English only. Localised voice is a
+separate workstream — the Flash v2.5 model claims multilingual support but
+quality varies across the LOW-confidence set.
+
 When you change status, edit this section.
 
 ---

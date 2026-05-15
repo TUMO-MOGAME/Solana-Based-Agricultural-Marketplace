@@ -41,6 +41,8 @@ import {
   isSupabaseConfigured,
 } from "@/lib/supabase/client";
 import { fetchPackMeta, type PackMeta } from "@/lib/supabase/pack-meta";
+import { LanguagePicker } from "@/lib/i18n/language-picker";
+import { useT } from "@/lib/i18n/provider";
 import { readDemoUser, clearDemoUser } from "@/lib/vuna/demo-user";
 import { WalletButton } from "@/lib/vuna/wallet-button";
 import {
@@ -79,12 +81,14 @@ type ProfileTab =
 
 // Tabs surfaced in the profile-header menu. "marketplace" is reachable
 // only via the sidebar nav, so it's intentionally absent here.
-const PROFILE_TABS: Array<{ id: ProfileTab; label: string }> = [
-  { id: "active", label: "Active" },
-  { id: "apply", label: "Apply" },
-  { id: "insurance", label: "Insurance" },
-  { id: "history", label: "History" },
-  { id: "about", label: "About" },
+// `labelKey` is resolved via the i18n `t()` helper at render time so the
+// strings switch when the user changes language.
+const PROFILE_TABS: Array<{ id: ProfileTab; labelKey: "tab.active" | "tab.apply" | "tab.insurance" | "tab.history" | "tab.about" }> = [
+  { id: "active", labelKey: "tab.active" },
+  { id: "apply", labelKey: "tab.apply" },
+  { id: "insurance", labelKey: "tab.insurance" },
+  { id: "history", labelKey: "tab.history" },
+  { id: "about", labelKey: "tab.about" },
 ];
 
 // localStorage key for the IDs of alerts the user has dismissed via
@@ -215,6 +219,7 @@ function deriveAlerts(s: FarmerSnapshot): DashAlert[] {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { t } = useT();
   const [user, setUser] = useState<DashUser | null>(null);
   const [leftOpen, setLeftOpen] = useState(false);
   const [rightOpen, setRightOpen] = useState(false);
@@ -444,25 +449,25 @@ export default function DashboardPage() {
   const navItems = [
     {
       icon: Home,
-      label: "Home",
+      label: t("nav.home"),
       active: profileTab === "active",
       onClick: () => goToTab("active"),
     },
     {
       icon: Sprout,
-      label: "Apply for Pack",
+      label: t("nav.apply"),
       active: profileTab === "apply",
       onClick: () => goToTab("apply"),
     },
     {
       icon: ShieldCheck,
-      label: "Insurance",
+      label: t("nav.insurance"),
       active: profileTab === "insurance",
       onClick: () => goToTab("insurance"),
     },
     {
       icon: Wallet,
-      label: "Wallet",
+      label: t("nav.wallet"),
       meta: walletShort ?? undefined,
       highlightTour: walletHighlighted,
       onClick: () => {
@@ -473,7 +478,7 @@ export default function DashboardPage() {
     },
     {
       icon: ShoppingBag,
-      label: "Marketplace",
+      label: t("nav.marketplace"),
       active: profileTab === "marketplace",
       onClick: () => goToTab("marketplace"),
     },
@@ -559,6 +564,7 @@ export default function DashboardPage() {
         </div>
 
         <div className={styles.sidebarFooter}>
+          <LanguagePicker />
           <Link
             href="/"
             className={styles.sidebarFooterCard}
@@ -651,17 +657,17 @@ export default function DashboardPage() {
             </div>
 
             <nav className={styles.profileMenu} aria-label="Profile sections">
-              {PROFILE_TABS.map((t) => (
+              {PROFILE_TABS.map((tab) => (
                 <button
-                  key={t.id}
+                  key={tab.id}
                   type="button"
                   className={`${styles.profileMenuLink} ${
-                    profileTab === t.id ? styles.active : ""
+                    profileTab === tab.id ? styles.active : ""
                   }`}
-                  onClick={() => setProfileTab(t.id)}
-                  aria-current={profileTab === t.id ? "page" : undefined}
+                  onClick={() => setProfileTab(tab.id)}
+                  aria-current={profileTab === tab.id ? "page" : undefined}
                 >
-                  {t.label}
+                  {t(tab.labelKey)}
                 </button>
               ))}
             </nav>
@@ -1200,6 +1206,7 @@ function ActiveTab({
 
 function InsuranceTab() {
   const { publicKey: walletPubkey } = useFarmerWallet();
+  const { t } = useT();
   const [pack, setPack] = useState<GrowPack | null>(null);
   const [packMeta, setPackMeta] = useState<PackMeta | null>(null);
   const [packAddress, setPackAddress] = useState<string>(DEMO_PACK_ADDRESS);
@@ -1350,7 +1357,7 @@ function InsuranceTab() {
         >
           <div className={styles.sessionEyebrow}>
             <span className={styles.sessionDot} />
-            {triggered ? "Payout sent" : "No payout due"}
+            {triggered ? t("insurance.payout_sent") : t("insurance.no_payout")}
           </div>
           <ListenButton
             text={voiceLine}
@@ -1377,9 +1384,7 @@ function InsuranceTab() {
           {formatRand(pack.insurancePayout)}
         </h3>
         <p className={styles.sessionSubtitle} style={{ marginTop: 8 }}>
-          {triggered
-            ? "Sent to your account. No paperwork. No claim form."
-            : "Threshold not breached. Cover remains active."}
+          {triggered ? t("insurance.sent_msg") : t("insurance.cover_active")}
         </p>
       </div>
 
@@ -1388,7 +1393,7 @@ function InsuranceTab() {
         <div className={styles.box}>
           <div className={styles.boxHeader}>
             <h2 className={styles.boxTitle}>
-              {triggered ? "Why you were paid" : "Rainfall observation"}
+              {triggered ? t("insurance.why_paid") : t("insurance.rain_obs")}
             </h2>
             <span className={styles.boxLabel}>{rainfall}%</span>
           </div>
