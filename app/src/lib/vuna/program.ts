@@ -548,6 +548,57 @@ export function makeTriggerInsurancePayoutIx(
   });
 }
 
+// ---- settle_repayment -------------------------------------------------------
+//
+// Called at harvest sale to close out a Grow Pack. The Anchor handler:
+//   - Adds sale_proceeds + pack.insurance_payout = available funds
+//   - Splits into repaid / surplus / defaulted via GrowPack::settle_at_harvest
+//   - Updates farmer credit score via FarmerAccount::apply_event
+//   - Status moves to Repaid (no default) or Defaulted (shortfall present)
+//
+// IMPORTANT — unlike approve / disburse / trigger, this instruction writes
+// to BOTH pack AND farmer (farmer's credit score gets updated). The account
+// list keeps the same (pack, farmer, cooperative) ordering but farmer must
+// be marked writable.
+
+export interface SettleRepaymentArgs {
+  /** GrowPack PDA being closed. */
+  pack: PublicKey;
+  /** FarmerAccount PDA — written to so credit score can update. */
+  farmer: PublicKey;
+  /** Cooperative authority — must match the farmer's has_one = cooperative. */
+  cooperative: PublicKey;
+  /** Harvest sale proceeds in the same fixed-point Rand units as
+   *  pack.bundle_cost / pack.total_repayment. */
+  saleProceeds: bigint;
+}
+
+export function makeSettleRepaymentIx(
+  args: SettleRepaymentArgs,
+): TransactionInstruction {
+  if (args.saleProceeds < 0n) {
+    throw new Error("saleProceeds must be non-negative");
+  }
+  // u64 max — anything larger overflows on-chain.
+  if (args.saleProceeds > 0xffffffffffffffffn) {
+    throw new Error("saleProceeds exceeds u64 max");
+  }
+  // disc(8) + sale_proceeds u64 LE (8) = 16 bytes
+  const data = new Uint8Array(16);
+  data.set(DISCRIMINATORS.settle_repayment, 0);
+  const view = new DataView(data.buffer);
+  view.setBigUint64(8, args.saleProceeds, true /* little-endian */);
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: args.pack, isSigner: false, isWritable: true },
+      { pubkey: args.farmer, isSigner: false, isWritable: true },
+      { pubkey: args.cooperative, isSigner: true, isWritable: false },
+    ],
+    data: Buffer.from(data),
+  });
+}
+
 // ---- fetchAllGrowPacks ------------------------------------------------------
 //
 // Scans every GrowPack PDA owned by the program. Used by /coop/* to build

@@ -40,6 +40,7 @@ import {
   createSupabaseBrowserClient,
   isSupabaseConfigured,
 } from "@/lib/supabase/client";
+import { fetchPackMeta, type PackMeta } from "@/lib/supabase/pack-meta";
 import { readDemoUser, clearDemoUser } from "@/lib/vuna/demo-user";
 import { WalletButton } from "@/lib/vuna/wallet-button";
 import {
@@ -106,6 +107,9 @@ type FarmerSnapshot = {
   /** Current-season GrowPack, null if the farmer hasn't applied yet. */
   pack: GrowPack | null;
   packAddress: string | null;
+  /** Off-chain crop + hectares for the current pack. Null when Supabase
+   *  is unconfigured, when the pack pre-dates pack_meta, or on demo-mode. */
+  packMeta: PackMeta | null;
 };
 
 const EMPTY_SNAPSHOT: FarmerSnapshot = {
@@ -114,6 +118,7 @@ const EMPTY_SNAPSHOT: FarmerSnapshot = {
   farmerAccount: null,
   pack: null,
   packAddress: null,
+  packMeta: null,
 };
 
 type DashAlert = {
@@ -240,9 +245,11 @@ export default function DashboardPage() {
         const [farmerAcc] = farmerPda(walletPubkey, farmerIdHash);
         const seasonId = new Date().getFullYear();
         const [packAcc] = packPda(farmerAcc, seasonId);
-        const [farmerAccount, pack] = await Promise.all([
+        const packAddress = packAcc.toBase58();
+        const [farmerAccount, pack, packMeta] = await Promise.all([
           fetchFarmerAccount(conn, farmerAcc),
           fetchGrowPack(conn, packAcc),
+          fetchPackMeta(packAddress),
         ]);
         if (cancelled) return;
         setSnapshot({
@@ -250,7 +257,8 @@ export default function DashboardPage() {
           error: null,
           farmerAccount,
           pack,
-          packAddress: packAcc.toBase58(),
+          packAddress,
+          packMeta,
         });
       } catch (e) {
         if (cancelled) return;
@@ -260,6 +268,7 @@ export default function DashboardPage() {
           farmerAccount: null,
           pack: null,
           packAddress: null,
+          packMeta: null,
         });
       }
     })();
@@ -1039,7 +1048,10 @@ function ActiveTab({
   const maxPayoutZAR = ZAR_FMT.format(Number(pack.maxPayout));
   const insurancePayoutZAR = ZAR_FMT.format(Number(pack.insurancePayout));
 
-  const greetingLine = `Hello ${firstName}. Your Grow Pack for season ${pack.seasonId} in ${regionLabel} is currently ${pack.status}. Repayment of about ${totalRepaymentZAR} Rand is due at harvest.`;
+  const cropPhrase = snapshot.packMeta
+    ? `${snapshot.packMeta.crop} on ${snapshot.packMeta.hectares} hectares`
+    : "your Grow Pack";
+  const greetingLine = `Hello ${firstName}. ${cropPhrase} for season ${pack.seasonId} in ${regionLabel} is currently ${pack.status}. Repayment of about ${totalRepaymentZAR} Rand is due at harvest.`;
 
   return (
     <div className={styles.timelineSingle}>
@@ -1074,6 +1086,15 @@ function ActiveTab({
               <MapPin />
               <span>{regionLabel}</span>
             </div>
+            {snapshot.packMeta ? (
+              <div className={styles.introItem}>
+                <Sprout />
+                <span>
+                  <strong>{snapshot.packMeta.crop}</strong> ·{" "}
+                  {snapshot.packMeta.hectares} ha
+                </span>
+              </div>
+            ) : null}
             <div className={styles.introItem}>
               <Sprout />
               <span>
@@ -1180,6 +1201,7 @@ function ActiveTab({
 function InsuranceTab() {
   const { publicKey: walletPubkey } = useFarmerWallet();
   const [pack, setPack] = useState<GrowPack | null>(null);
+  const [packMeta, setPackMeta] = useState<PackMeta | null>(null);
   const [packAddress, setPackAddress] = useState<string>(DEMO_PACK_ADDRESS);
   const [isPreview, setIsPreview] = useState<boolean>(false);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "missing" | "error">("loading");
@@ -1209,11 +1231,16 @@ function InsuranceTab() {
         }
 
         if (cancelled) return;
-        setPackAddress(pubkey.toBase58());
+        const pubkeyStr = pubkey.toBase58();
+        setPackAddress(pubkeyStr);
         setIsPreview(preview);
 
-        const data = await fetchGrowPack(conn, pubkey);
+        const [data, meta] = await Promise.all([
+          fetchGrowPack(conn, pubkey),
+          fetchPackMeta(pubkeyStr),
+        ]);
         if (cancelled) return;
+        setPackMeta(meta);
         if (!data) {
           setLoadState("missing");
         } else {
@@ -1400,6 +1427,12 @@ function InsuranceTab() {
             <span className={styles.boxLabel}>{pack.status}</span>
           </div>
           <div className={styles.boxBody}>
+            {packMeta ? (
+              <DetailRow
+                label="Crop"
+                value={`${packMeta.crop} · ${packMeta.hectares} ha`}
+              />
+            ) : null}
             <DetailRow label="Bundle cost" value={formatRand(pack.bundleCost)} />
             <DetailRow label="Service fee" value={formatRand(pack.serviceFee)} />
             <DetailRow label="Total repayment" value={formatRand(pack.totalRepayment)} />

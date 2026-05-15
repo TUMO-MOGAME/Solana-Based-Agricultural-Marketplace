@@ -31,6 +31,7 @@ import {
   AlertCircle,
   ArrowLeft,
   Droplets,
+  UserPlus,
 } from "lucide-react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
@@ -40,6 +41,9 @@ import {
   makeApproveGrowPackIx,
   makeDisburseGrowPackIx,
   makeTriggerInsurancePayoutIx,
+  makeSettleRepaymentIx,
+  makeRegisterFarmerIx,
+  farmerIdHashFrom,
   type GrowPack,
 } from "@/lib/vuna/program";
 import { WalletButton } from "@/lib/vuna/wallet-button";
@@ -107,17 +111,28 @@ export default function CoopPage() {
     };
   }, [connection, refreshKey]);
 
-  // Group by status — simple O(n) scan, three buckets.
+  // Group by status — simple O(n) scan, four buckets.
+  //
+  // `harvestReady` includes both Active and InsurancePaid packs because the
+  // on-chain settle_repayment handler accepts both. An Active pack appears
+  // in BOTH `active` (drought watch) AND `harvestReady` (harvest close) —
+  // the operator chooses the right action for the season state.
   const buckets = useMemo(() => {
     const pending: Row[] = [];
     const approved: Row[] = [];
     const active: Row[] = [];
+    const harvestReady: Row[] = [];
     for (const r of rows) {
       if (r.pack.status === "Requested") pending.push(r);
       else if (r.pack.status === "Approved") approved.push(r);
-      else if (r.pack.status === "Active") active.push(r);
+      else if (r.pack.status === "Active") {
+        active.push(r);
+        harvestReady.push(r);
+      } else if (r.pack.status === "InsurancePaid") {
+        harvestReady.push(r);
+      }
     }
-    return { pending, approved, active };
+    return { pending, approved, active, harvestReady };
   }, [rows]);
 
   // Generic sign+send wrapper. `buildIx` is a closure over the chosen
@@ -215,10 +230,27 @@ export default function CoopPage() {
     [signAndSend],
   );
 
+  const onSettle = useCallback(
+    (row: Row, saleProceeds: bigint) =>
+      signAndSend(
+        row.address,
+        (cooperative) =>
+          makeSettleRepaymentIx({
+            cooperative,
+            farmer: row.pack.farmer,
+            pack: row.address,
+            saleProceeds,
+          }),
+        `Closed pack ${shortPk(row.address)} — repayment settled`,
+      ),
+    [signAndSend],
+  );
+
   const totalCount = rows.length;
   const pendingCount = buckets.pending.length;
   const approvedCount = buckets.approved.length;
   const activeCount = buckets.active.length;
+  const harvestReadyCount = buckets.harvestReady.length;
 
   return (
     <div
@@ -491,8 +523,17 @@ export default function CoopPage() {
           <Chip label="Pending" count={pendingCount} tone="warn" />
           <Chip label="Awaiting disbursement" count={approvedCount} tone="info" />
           <Chip label="Active" count={activeCount} tone="ok" />
+          <Chip label="Ready to close" count={harvestReadyCount} tone="info" />
           <Chip label="All packs on devnet" count={totalCount} tone="muted" />
         </div>
+
+        {/* Farmer registration — small, always visible. */}
+        <RegisterFarmerPanel
+          cooperative={publicKey}
+          connection={connection}
+          sendTransaction={sendTransaction}
+          onConnectClick={() => setWalletModalVisible(true)}
+        />
 
         {/* Load states */}
         {loadState === "loading" ? (
@@ -546,6 +587,21 @@ export default function CoopPage() {
                   busy={busyAddress === row.address.toBase58()}
                   disabled={!publicKey}
                   onTrigger={onTrigger}
+                />
+              )}
+            />
+
+            <Section
+              title="Harvest close"
+              subtitle="Active or post-drought packs that can be settled. Enter the harvest sale proceeds — the program splits funds into repaid, surplus to farmer, and any shortfall, then updates credit score."
+              rows={buckets.harvestReady}
+              emptyText="No packs ready for harvest close yet."
+              renderAction={(row) => (
+                <SettleControl
+                  row={row}
+                  busy={busyAddress === row.address.toBase58()}
+                  disabled={!publicKey}
+                  onSettle={onSettle}
                 />
               )}
             />
@@ -855,6 +911,314 @@ function ActionButton({
       {busy ? <Loader2 size={12} className="spin" /> : null}
       {label}
     </button>
+  );
+}
+
+// Regions list mirrors the apply-tab so the on-chain region codes match
+// what farmers select when they submit a Grow Pack request.
+const REGISTRATION_REGIONS: Array<{ value: number; label: string }> = [
+  { value: 0, label: "Eastern Cape" },
+  { value: 1, label: "KwaZulu-Natal" },
+  { value: 2, label: "Limpopo" },
+  { value: 3, label: "Mpumalanga" },
+  { value: 4, label: "Free State" },
+  { value: 5, label: "North West" },
+  { value: 6, label: "Western Cape" },
+  { value: 7, label: "Northern Cape" },
+  { value: 8, label: "Gauteng" },
+];
+
+function RegisterFarmerPanel({
+  cooperative,
+  connection,
+  sendTransaction,
+  onConnectClick,
+}: {
+  cooperative: PublicKey | null;
+  connection: import("@solana/web3.js").Connection;
+  sendTransaction:
+    | ((tx: Transaction, conn: import("@solana/web3.js").Connection) => Promise<string>)
+    | undefined;
+  onConnectClick: () => void;
+}) {
+  const [farmerInput, setFarmerInput] = useState("");
+  const [region, setRegion] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
+
+  const handleRegister = async () => {
+    setError(null);
+    setOkMsg(null);
+
+    if (!cooperative || !sendTransaction) {
+      onConnectClick();
+      return;
+    }
+    let farmerPubkey: PublicKey;
+    try {
+      farmerPubkey = new PublicKey(farmerInput.trim());
+    } catch {
+      setError("That's not a valid Solana public key.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const farmerIdHash = await farmerIdHashFrom(farmerPubkey.toBase58());
+      const ix = makeRegisterFarmerIx({
+        cooperative,
+        farmerIdHash,
+        region,
+      });
+      const tx = new Transaction().add(ix);
+      const sig = await sendTransaction(tx, connection);
+      await connection.confirmTransaction(sig, "confirmed");
+      setOkMsg(
+        `Registered ${shortPk(farmerPubkey)} in ${REGISTRATION_REGIONS[region].label} · tx ${shortPk(sig)}`,
+      );
+      setFarmerInput("");
+    } catch (e) {
+      let msg = e instanceof Error ? e.message : String(e);
+      const cause = (e as { error?: unknown }).error;
+      if (cause) {
+        const logs = (cause as { logs?: string[] }).logs;
+        if (Array.isArray(logs) && logs.length) {
+          const programErr =
+            logs.find((l) => /Program log:.*Error/i.test(l)) ??
+            logs[logs.length - 1];
+          msg = `${msg}\n${programErr}`;
+        }
+      }
+      setError(msg);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        marginBottom: 24,
+        padding: 16,
+        borderRadius: 14,
+        background: "rgba(255, 255, 255, 0.04)",
+        border: "1px solid rgba(255, 230, 210, 0.14)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 4,
+        }}
+      >
+        <UserPlus size={14} style={{ color: "#ffb86b" }} />
+        <h3
+          style={{
+            fontSize: 14,
+            fontWeight: 800,
+            color: "rgba(255, 245, 230, 0.95)",
+            margin: 0,
+          }}
+        >
+          Register a farmer
+        </h3>
+      </div>
+      <p
+        style={{
+          fontSize: 11,
+          color: "rgba(255, 230, 210, 0.55)",
+          margin: "0 0 12px",
+          lineHeight: 1.5,
+        }}
+      >
+        Creates a FarmerAccount PDA seeded by the farmer&apos;s wallet pubkey
+        and your cooperative wallet. The farmer can then apply for a Grow
+        Pack from their dashboard.
+      </p>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+          alignItems: "flex-end",
+        }}
+      >
+        <label style={{ flex: "2 1 280px", minWidth: 240 }}>
+          <span
+            style={{
+              display: "block",
+              fontSize: 10,
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.12em",
+              color: "rgba(255, 230, 210, 0.55)",
+              marginBottom: 4,
+            }}
+          >
+            Farmer wallet
+          </span>
+          <input
+            type="text"
+            value={farmerInput}
+            onChange={(e) => setFarmerInput(e.target.value)}
+            placeholder="Paste the farmer's Solana public key"
+            style={{
+              width: "100%",
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px solid rgba(255, 230, 210, 0.18)",
+              background: "rgba(0, 0, 0, 0.28)",
+              color: "rgba(255, 245, 230, 0.95)",
+              fontSize: 12,
+              fontFamily: "var(--font-geist-mono), ui-monospace, monospace",
+              outline: "none",
+            }}
+          />
+        </label>
+        <label style={{ flex: "1 1 140px", minWidth: 140 }}>
+          <span
+            style={{
+              display: "block",
+              fontSize: 10,
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.12em",
+              color: "rgba(255, 230, 210, 0.55)",
+              marginBottom: 4,
+            }}
+          >
+            Region
+          </span>
+          <select
+            value={region}
+            onChange={(e) => setRegion(Number(e.target.value))}
+            style={{
+              width: "100%",
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px solid rgba(255, 230, 210, 0.18)",
+              background: "rgba(0, 0, 0, 0.28)",
+              color: "rgba(255, 245, 230, 0.95)",
+              fontSize: 12,
+              fontFamily: "inherit",
+              outline: "none",
+            }}
+          >
+            {REGISTRATION_REGIONS.map((r) => (
+              <option key={r.value} value={r.value}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <ActionButton
+          label={cooperative ? "Register" : "Connect wallet"}
+          busy={busy}
+          disabled={!farmerInput.trim() && Boolean(cooperative)}
+          onClick={handleRegister}
+        />
+      </div>
+      {error ? (
+        <div
+          style={{
+            marginTop: 10,
+            padding: "8px 12px",
+            borderRadius: 8,
+            background: "rgba(255, 123, 107, 0.10)",
+            border: "1px solid rgba(255, 123, 107, 0.35)",
+            fontSize: 11,
+            color: "#ffb0a3",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {error}
+        </div>
+      ) : null}
+      {okMsg ? (
+        <div
+          style={{
+            marginTop: 10,
+            padding: "8px 12px",
+            borderRadius: 8,
+            background: "rgba(46, 125, 50, 0.10)",
+            border: "1px solid rgba(46, 125, 50, 0.35)",
+            fontSize: 11,
+            color: "#7adf7d",
+          }}
+        >
+          {okMsg}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SettleControl({
+  row,
+  busy,
+  disabled,
+  onSettle,
+}: {
+  row: Row;
+  busy: boolean;
+  disabled: boolean;
+  onSettle: (row: Row, saleProceeds: bigint) => void;
+}) {
+  // Pre-populate with the total repayment amount — the most common case is
+  // the farmer sold for exactly the loan amount. Operator edits up/down to
+  // reflect actual sale.
+  const [proceeds, setProceeds] = useState<string>(
+    () => row.pack.totalRepayment.toString(),
+  );
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <label
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          fontSize: 11,
+          color: "rgba(255, 230, 210, 0.65)",
+        }}
+      >
+        Sale R
+        <input
+          type="number"
+          min={0}
+          value={proceeds}
+          onChange={(e) => setProceeds(e.target.value)}
+          style={{
+            width: 80,
+            marginLeft: 4,
+            padding: "4px 6px",
+            borderRadius: 8,
+            border: "1px solid rgba(255, 230, 210, 0.18)",
+            background: "rgba(0, 0, 0, 0.25)",
+            color: "rgba(255, 245, 230, 0.95)",
+            fontSize: 12,
+            fontFamily: "inherit",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        />
+      </label>
+      <ActionButton
+        label="Close"
+        busy={busy}
+        disabled={disabled}
+        onClick={() => {
+          let n: bigint;
+          try {
+            n = BigInt(proceeds.trim() || "0");
+          } catch {
+            return;
+          }
+          if (n < 0n) return;
+          onSettle(row, n);
+        }}
+      />
+    </div>
   );
 }
 

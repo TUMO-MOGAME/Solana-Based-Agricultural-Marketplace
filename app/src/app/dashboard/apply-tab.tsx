@@ -29,6 +29,7 @@ import {
   fetchFarmerAccount,
   fetchGrowPack,
 } from "@/lib/vuna/program";
+import { savePackMeta, type Crop } from "@/lib/supabase/pack-meta";
 import styles from "./dashboard.module.css";
 
 const DEFAULT_SEED_COST = 420;
@@ -164,6 +165,20 @@ export function ApplyTab({ onSuccess, onNavigateToInsurance }: ApplyTabProps) {
       const sig = await sendTransaction(tx, connection);
       await connection.confirmTransaction(sig, "confirmed");
       const packAddress = packAcc.toBase58();
+
+      // Persist crop + hectares off-chain (Supabase). Best-effort —
+      // on-chain state is canonical, so a Supabase write failure (demo
+      // mode, network blip, RLS) does not block the success path.
+      const hectaresNum = Number(hectares);
+      if (Number.isFinite(hectaresNum) && hectaresNum > 0) {
+        await savePackMeta({
+          packPda: packAddress,
+          crop: crop as Crop,
+          hectares: hectaresNum,
+          seasonId: CURRENT_SEASON_ID,
+        });
+      }
+
       setSuccess({ sig, pack: packAddress });
       onSuccess?.({ packAddress, txSignature: sig });
     } catch (e) {

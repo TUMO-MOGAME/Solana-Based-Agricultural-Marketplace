@@ -19,6 +19,7 @@ import {
   makeApproveGrowPackIx,
   makeDisburseGrowPackIx,
   makeTriggerInsurancePayoutIx,
+  makeSettleRepaymentIx,
 } from "./program";
 
 // Stable test fixtures
@@ -333,5 +334,60 @@ describe("makeTriggerInsurancePayoutIx", () => {
     expect(ix.keys[1].pubkey.toBase58()).toBe(FARMER_PDA.toBase58());
     expect(ix.keys[2].pubkey.toBase58()).toBe(COOP.toBase58());
     expect(ix.keys[2].isSigner).toBe(true);
+  });
+});
+
+describe("makeSettleRepaymentIx", () => {
+  const args = {
+    pack: PACK_PDA,
+    farmer: FARMER_PDA,
+    cooperative: COOP,
+    saleProceeds: 5000n,
+  };
+
+  it("data is exactly 16 bytes (8 disc + 8 sale_proceeds u64)", () => {
+    expect(makeSettleRepaymentIx(args).data.length).toBe(16);
+  });
+
+  it("starts with the settle_repayment discriminator", () => {
+    const ix = makeSettleRepaymentIx(args);
+    expect(Array.from(ix.data.slice(0, 8))).toEqual([129, 198, 176, 67, 69, 207, 220, 178]);
+  });
+
+  it("encodes sale_proceeds as little-endian u64", () => {
+    const ix = makeSettleRepaymentIx({ ...args, saleProceeds: 5000n });
+    // 5000 = 0x1388 → little-endian bytes [0x88, 0x13, 0, 0, 0, 0, 0, 0]
+    expect(Array.from(ix.data.slice(8, 16))).toEqual([0x88, 0x13, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it("encodes sale_proceeds=0 as all zeros", () => {
+    const ix = makeSettleRepaymentIx({ ...args, saleProceeds: 0n });
+    expect(Array.from(ix.data.slice(8, 16))).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it("rejects negative sale_proceeds", () => {
+    expect(() =>
+      makeSettleRepaymentIx({ ...args, saleProceeds: -1n }),
+    ).toThrow(/non-negative/);
+  });
+
+  it("rejects sale_proceeds above u64 max", () => {
+    expect(() =>
+      makeSettleRepaymentIx({
+        ...args,
+        saleProceeds: 0xffffffffffffffffn + 1n,
+      }),
+    ).toThrow(/u64/);
+  });
+
+  it("marks both pack and farmer as writable (farmer's credit score updates)", () => {
+    const ix = makeSettleRepaymentIx(args);
+    expect(ix.keys[0].pubkey.toBase58()).toBe(PACK_PDA.toBase58());
+    expect(ix.keys[0].isWritable).toBe(true);
+    expect(ix.keys[1].pubkey.toBase58()).toBe(FARMER_PDA.toBase58());
+    expect(ix.keys[1].isWritable).toBe(true); // ← different from approve/disburse/trigger
+    expect(ix.keys[2].pubkey.toBase58()).toBe(COOP.toBase58());
+    expect(ix.keys[2].isSigner).toBe(true);
+    expect(ix.keys[2].isWritable).toBe(false);
   });
 });
