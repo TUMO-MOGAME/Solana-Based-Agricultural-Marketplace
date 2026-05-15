@@ -47,6 +47,7 @@ A Solana-based agricultural marketplace for South African smallholder farmers, b
 │   ├── proposal.pdf · source-paper.pdf
 │   ├── architecture.md · regulatory.md · glossary.md
 │   ├── phase-4-fund-a-farmer.md   (peer-to-peer 0%-return roadmap, NOT implemented)
+│   ├── api-backend-scoping.md     (api/ Node.js backend scoping, NOT implemented)
 │   ├── outreach/               (insurer outreach pack — one-pager + product-brief PDFs)
 │   └── presentation/           (Tumo's global pitch — script PDF + 10 slides, built by scripts/build_pitch.py)
 │
@@ -327,7 +328,7 @@ We hold these licences ourselves OR partner with someone who does. No shortcuts.
 
 ### Not yet done
 - [ ] First insurer cold email sent — recommended first contact: LBIC
-- [ ] `api/` Node.js backend service (KYC, supplier inventory, off-ramp reconciliation, POPIA logging) — biggest remaining scope, post-hackathon
+- [ ] `api/` Node.js backend service (KYC, supplier inventory, off-ramp reconciliation, POPIA logging) — scoping doc at [`docs/api-backend-scoping.md`](docs/api-backend-scoping.md); build starts at Pilot v1 (2027 H1)
 - [ ] USSD / feature-phone bridge
 - [ ] Audit the Anchor program before any mainnet deploy
 - [ ] Replace caller-as-attester in `trigger_insurance_payout` with a licensed-underwriter signing service once one is engaged
