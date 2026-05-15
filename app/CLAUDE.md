@@ -145,10 +145,15 @@ In rough order of impact:
 
 1. **Insurer outreach** — `docs/outreach/` is drafted; first cold email to LBIC unsent. Not a coding task.
 2. **Oracle architecture decision** — `trigger_insurance_payout` currently accepts the rainfall % from the cooperative; replace with a licensed-underwriter signing service when one is engaged. See `spikes/oracle-check/FINDINGS.md`.
-3. **`api/` Node.js backend** — empty scaffold. Needed for KYC, supplier inventory, off-ramp reconciliation, POPIA-compliant logging.
-4. **Pack metadata persistence** — crop name + hectares typed into apply form but never saved. Add a `pack_meta` Supabase table keyed by pack PDA.
-5. **`/coop` extras** — settle_repayment UI, farmer-registration UI, audit log, multi-wallet farmer/buyer impersonation for demo.
-6. **Lift `settle_repayment` encoder** out of `setup-devnet-demo.mjs` into `lib/vuna/program.ts` (only matters once the harvest-close UI lands).
-7. **isiZulu / isiXhosa localisation.**
-8. **USSD / feature-phone bridge.**
-9. **Audit the Anchor program** before any mainnet deploy.
+3. **`api/` Node.js backend** — empty scaffold. Needed for KYC, supplier inventory, off-ramp reconciliation, POPIA-compliant logging. Biggest remaining scope; needs its own scoping doc before code starts.
+4. **`/coop` extras** — audit log, multi-wallet farmer/buyer impersonation for demo. (settle_repayment UI + farmer-registration UI ✅ shipped 2026-05-15.)
+5. **isiZulu / isiXhosa localisation.**
+6. **USSD / feature-phone bridge.**
+7. **Audit the Anchor program** before any mainnet deploy.
+
+### Recently shipped (2026-05-15)
+- ✅ Pack metadata persistence — `pack_meta` Supabase table + lib + dashboard display
+- ✅ `settle_repayment` encoder lifted into `lib/vuna/program.ts`
+- ✅ Settle-repayment UI on `/coop` ("Harvest close" section)
+- ✅ Farmer-registration UI on `/coop` (`<RegisterFarmerPanel>`)
+- ✅ Phase 4 Fund-a-Farmer roadmap doc + 0% principle locked

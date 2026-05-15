@@ -315,19 +315,23 @@ We hold these licences ourselves OR partner with someone who does. No shortcuts.
 ### Tests, all passing
 - 99 Vitest tests in root `tests/` — `core/` rules
 - 41 cargo unit tests + 3 litesvm integration tests in `programs/vuna/programs/vuna/` — Rust port + on-chain lifecycle
-- 40 Vitest tests in `app/src/lib/vuna/program.test.ts` — PDA derivation, pricing math, instruction-encoder byte layouts for **5 instructions** (register_farmer, request_grow_pack, approve_grow_pack, disburse_grow_pack, trigger_insurance_payout)
-- **Total: 183 tests across 3 languages**
+- 47 Vitest tests in `app/src/lib/vuna/program.test.ts` — PDA derivation, pricing math, instruction-encoder byte layouts for **6 instructions** (register_farmer, request_grow_pack, approve_grow_pack, disburse_grow_pack, trigger_insurance_payout, settle_repayment)
+- **Total: 190 tests across 3 languages**
+
+### Done since last update (2026-05-15)
+- [x] Pack metadata persistence — crop + hectares now stored in `pack_meta` Supabase table (RLS-locked to farmer-owner), written on Apply success, displayed on Active intro card + Insurance Pack details + voice greeting
+- [x] Settle-repayment encoder lifted into `app/src/lib/vuna/program.ts` (+ 7 byte-layout tests)
+- [x] Settle-repayment UI on `/coop` — new "Harvest close" section with sale-proceeds input
+- [x] Farmer-registration UI on `/coop` — `<RegisterFarmerPanel>` at the top of the page replaces having to run `setup-devnet-demo.mjs` for new farmers
+- [x] Phase 4 Fund-a-Farmer roadmap doc (`docs/phase-4-fund-a-farmer.md`) + 0% principle locked in §6
 
 ### Not yet done
 - [ ] First insurer cold email sent — recommended first contact: LBIC
-- [ ] Settle-repayment instruction encoder lifted into `lib/vuna/program.ts` (still inlined in `setup-devnet-demo.mjs`; only matters once we add the harvest-close UI)
-- [ ] Settle-repayment + farmer-registration UIs on `/coop`
-- [ ] `api/` Node.js backend service (KYC, supplier inventory, off-ramp reconciliation, POPIA logging)
-- [ ] Pack metadata persistence — crop name + hectares are entered in the apply form but discarded; no Supabase table for them yet, so the dashboard doesn't show "Maize · 2 ha" anywhere honest
-- [ ] isiZulu / isiXhosa localisation
+- [ ] `api/` Node.js backend service (KYC, supplier inventory, off-ramp reconciliation, POPIA logging) — biggest remaining scope, post-hackathon
 - [ ] USSD / feature-phone bridge
 - [ ] Audit the Anchor program before any mainnet deploy
 - [ ] Replace caller-as-attester in `trigger_insurance_payout` with a licensed-underwriter signing service once one is engaged
+- [ ] Native-speaker review of the 11-language i18n strings — see "Translation review" below
 
 ### ⚠️ Known stale docs
 - `docs/proposal.pdf` (§4 + §5) still names **Pyth** as the weather oracle. This is wrong — Pyth has no weather feeds. Do NOT regenerate the proposal PDF until we've finalised the underwriter-attestation architecture; otherwise we'll regenerate twice.
