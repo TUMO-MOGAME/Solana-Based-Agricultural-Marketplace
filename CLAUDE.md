@@ -46,7 +46,9 @@ A Solana-based agricultural marketplace for South African smallholder farmers, b
 ├── docs/                    ← narrative + reference docs
 │   ├── proposal.pdf · source-paper.pdf
 │   ├── architecture.md · regulatory.md · glossary.md
-│   └── outreach/               (insurer outreach pack — one-pager + product-brief PDFs)
+│   ├── phase-4-fund-a-farmer.md   (peer-to-peer 0%-return roadmap, NOT implemented)
+│   ├── outreach/               (insurer outreach pack — one-pager + product-brief PDFs)
+│   └── presentation/           (Tumo's global pitch — script PDF + 10 slides, built by scripts/build_pitch.py)
 │
 ├── design/                  ← UI design + mockups + brand
 │   ├── palette.md              (original cream/green/gold brand palette)
@@ -109,7 +111,8 @@ A Solana-based agricultural marketplace for South African smallholder farmers, b
 ├── scripts/                 ← Python build scripts
 │   ├── build_proposal_pdf.py
 │   ├── build_one_pager.py
-│   └── build_product_brief.py
+│   ├── build_product_brief.py
+│   └── build_pitch.py          (Tumo's global-pitch pack: speaker script PDF + 16:9 slides)
 │
 └── spikes/                  ← throwaway research code
     └── oracle-check/        (Pyth + Switchboard probes; FINDINGS.md)
@@ -180,6 +183,7 @@ Smallholders grow ~70% of African food but get under 5% of bank lending. Closing
 - An underwriting fund → connect to DeFi pools or partner with an MFI
 - A general-purpose blockchain → use Solana
 - A new payments rail → settle USDC, reconcile to ZAR via existing on/off-ramps and PayShap
+- **A yield-bearing investment product.** Peer funding (Phase 4 — see [`docs/phase-4-fund-a-farmer.md`](docs/phase-4-fund-a-farmer.md)) is **strict 0% return, principal back only.** Adding any return — even 1% — reclassifies the product under NCA + FSCA and breaks the moral framing. Do not drift.
 
 Scope discipline matters. If a new idea expands one of these boundaries, push back.
 
@@ -252,6 +256,7 @@ We hold these licences ourselves OR partner with someone who does. No shortcuts.
 | Pilot v1 | H1 2027 | 50–200 real farmers, one province, one crop. **60–80% repayment, not 95%.** |
 | Pilot v2 | H2 2027 | Second province, second crop. Reinsurance arrangement begins. |
 | Regional | 2028 | Zambia / Kenya via Superteam. Multi-currency settlement. |
+| **Phase 4 — Fund a Farmer** | 2028+ | Peer-funded Grow Packs, devnet → SA-domestic → SADC → global. **Strict 0% return.** Roadmap in [`docs/phase-4-fund-a-farmer.md`](docs/phase-4-fund-a-farmer.md). |
 
 ---
 

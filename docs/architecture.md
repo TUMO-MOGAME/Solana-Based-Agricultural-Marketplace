@@ -124,3 +124,12 @@ The on-chain program implements the full Grow Pack lifecycle with deterministic 
 The `trigger_insurance_payout` instruction currently accepts a rainfall percentage from the caller and computes the payout amount itself via `ParametricPolicy::evaluate_payout`. When the underwriter integration lands (per item 3 above), a sibling `attest_insurance_payout` instruction will accept a signed underwriter attestation as the source of truth, with the on-chain code merely verifying the signature.
 
 Live: `7LUkUHVazSw732334JKFP88VAFc4iYXXJZkgFnZV9kqA` on devnet, frontend at https://solana-based-agricultural-marketpla.vercel.app/.
+
+## Roadmap — Phase 4 (peer-funded Grow Packs)
+
+A second funding rail — peer-to-peer 0%-return contributions to Grow Packs —
+is documented in [`docs/phase-4-fund-a-farmer.md`](phase-4-fund-a-farmer.md).
+**Not yet implemented**, scheduled after Pilot v2. The doc locks in the
+strict 0% principle before any code starts, defines the new
+`FunderContribution` PDA, and maps the regulatory mitigations. Read it
+before touching any related design.
