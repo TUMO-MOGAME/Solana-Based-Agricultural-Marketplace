@@ -92,3 +92,31 @@ export function useT(): I18nContextValue {
   }
   return ctx;
 }
+
+/**
+ * Map a GrowPack status string (the raw enum from the on-chain decoder)
+ * to its localised label. Returns the original status as a fallback when
+ * we receive an unexpected value — that way bad data on chain still renders
+ * something, instead of an empty badge.
+ */
+export function translateStatus(
+  status: string,
+  t: (key: MessageKey, fallback?: string) => string,
+): string {
+  switch (status) {
+    case "Requested":
+      return t("status.requested");
+    case "Approved":
+      return t("status.approved");
+    case "Active":
+      return t("status.active");
+    case "InsurancePaid":
+      return t("status.insurance_paid");
+    case "Repaid":
+      return t("status.repaid");
+    case "Defaulted":
+      return t("status.defaulted");
+    default:
+      return status;
+  }
+}

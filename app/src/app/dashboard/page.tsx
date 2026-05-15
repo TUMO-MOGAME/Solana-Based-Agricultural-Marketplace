@@ -39,7 +39,7 @@ import {
 } from "@/lib/supabase/client";
 import { fetchPackMeta, type PackMeta } from "@/lib/supabase/pack-meta";
 import { LanguagePicker } from "@/lib/i18n/language-picker";
-import { useT } from "@/lib/i18n/provider";
+import { useT, translateStatus } from "@/lib/i18n/provider";
 import { readDemoUser, clearDemoUser } from "@/lib/vuna/demo-user";
 import { WalletButton } from "@/lib/vuna/wallet-button";
 import {
@@ -877,6 +877,7 @@ function ActiveTab({
   onApplyClick: () => void;
   onConnectClick: () => void | Promise<void>;
 }) {
+  const { t } = useT();
   // ─── State 1: no wallet ─────────────────────────────────────────
   if (!walletConnected) {
     return (
@@ -1054,7 +1055,8 @@ function ActiveTab({
   const cropPhrase = snapshot.packMeta
     ? `${snapshot.packMeta.crop} on ${snapshot.packMeta.hectares} hectares`
     : "your Grow Pack";
-  const greetingLine = `Hello ${firstName}. ${cropPhrase} for season ${pack.seasonId} in ${regionLabel} is currently ${pack.status}. Repayment of about ${totalRepaymentZAR} Rand is due at harvest.`;
+  const localisedStatus = translateStatus(pack.status, t);
+  const greetingLine = `Hello ${firstName}. ${cropPhrase} for season ${pack.seasonId} in ${regionLabel} is currently ${localisedStatus}. Repayment of about ${totalRepaymentZAR} Rand is due at harvest.`;
 
   return (
     <div className={styles.timelineSingle}>
@@ -1075,7 +1077,7 @@ function ActiveTab({
                 text={greetingLine}
                 ariaLabel="Listen — your daily summary, read aloud"
               />
-              <span className={styles.boxLabel}>{pack.status}</span>
+              <span className={styles.boxLabel}>{localisedStatus}</span>
             </div>
           </div>
           <div className={styles.boxBody}>
@@ -1110,11 +1112,11 @@ function ActiveTab({
         <div className={`${styles.box} ${styles.session}`}>
           <div className={styles.sessionEyebrow}>
             <span className={styles.sessionDot} />
-            Active Grow Pack
+            {t("active.title")}
           </div>
           <h3 className={styles.sessionTitle}>R {bundleCostZAR}</h3>
           <p className={styles.sessionSubtitle}>
-            Bundle today · Repay R {totalRepaymentZAR} after harvest
+            {t("active.bundle_today")} · {t("active.repay_after_harvest")} R {totalRepaymentZAR}
           </p>
           <ul
             style={{
@@ -1129,21 +1131,20 @@ function ActiveTab({
             }}
           >
             <li>
-              Drought threshold: <strong>{pack.thresholdPercent}%</strong> of
-              norm rainfall
+              {t("active.drought_threshold")}: <strong>{pack.thresholdPercent}%</strong> {t("active.norm_rainfall")}
             </li>
             <li>
-              Max payout: <strong>R {maxPayoutZAR}</strong>
+              {t("active.max_payout")}: <strong>R {maxPayoutZAR}</strong>
             </li>
             {pack.rainfallPercentOfNorm > 0 ? (
               <li>
-                Latest observation:{" "}
-                <strong>{pack.rainfallPercentOfNorm}%</strong> of norm
+                {t("active.latest_obs")}:{" "}
+                <strong>{pack.rainfallPercentOfNorm}%</strong> {t("active.of_norm")}
               </li>
             ) : null}
             {pack.insurancePayout > 0n ? (
               <li>
-                Insurance paid: <strong>R {insurancePayoutZAR}</strong>
+                {t("active.insurance_paid")}: <strong>R {insurancePayoutZAR}</strong>
               </li>
             ) : null}
           </ul>
@@ -1426,22 +1427,22 @@ function InsuranceTab() {
         <div className={styles.box}>
           <div className={styles.boxHeader}>
             <h2 className={styles.boxTitle}>Pack details</h2>
-            <span className={styles.boxLabel}>{pack.status}</span>
+            <span className={styles.boxLabel}>{translateStatus(pack.status, t)}</span>
           </div>
           <div className={styles.boxBody}>
             {packMeta ? (
               <DetailRow
-                label="Crop"
+                label={t("common.crop")}
                 value={`${packMeta.crop} · ${packMeta.hectares} ha`}
               />
             ) : null}
-            <DetailRow label="Bundle cost" value={formatRand(pack.bundleCost)} />
+            <DetailRow label={t("common.bundle_cost")} value={formatRand(pack.bundleCost)} />
             <DetailRow label="Service fee" value={formatRand(pack.serviceFee)} />
-            <DetailRow label="Total repayment" value={formatRand(pack.totalRepayment)} />
-            <DetailRow label="Threshold" value={`${pack.thresholdPercent}% of norm`} />
-            <DetailRow label="Max payout" value={formatRand(pack.maxPayout)} />
-            <DetailRow label="Insurance payout" value={formatRand(pack.insurancePayout)} highlight />
-            <DetailRow label="Pack" value={shortPackId(packAddress)} mono />
+            <DetailRow label={t("common.total_repayment")} value={formatRand(pack.totalRepayment)} />
+            <DetailRow label="Threshold" value={`${pack.thresholdPercent}% ${t("active.of_norm")}`} />
+            <DetailRow label={t("active.max_payout")} value={formatRand(pack.maxPayout)} />
+            <DetailRow label={t("common.insurance_payout")} value={formatRand(pack.insurancePayout)} highlight />
+            <DetailRow label={t("common.pack")} value={shortPackId(packAddress)} mono />
           </div>
         </div>
       </div>
@@ -1610,6 +1611,7 @@ type HistoryRow = {
 
 function HistoryTab({ onViewPack }: { onViewPack: () => void }) {
   const { publicKey: walletPubkey } = useFarmerWallet();
+  const { t } = useT();
   const [rows, setRows] = useState<HistoryRow[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "no-wallet" | "empty" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState("");
@@ -1680,11 +1682,11 @@ function HistoryTab({ onViewPack }: { onViewPack: () => void }) {
       <div className={styles.timelineSingle}>
         <div className={styles.box}>
           <div className={styles.boxHeader}>
-            <h2 className={styles.boxTitle}>History</h2>
+            <h2 className={styles.boxTitle}>{t("tab.history")}</h2>
           </div>
           <div className={styles.boxBody}>
             <span style={{ fontSize: 13, color: "rgba(255, 230, 210, 0.72)" }}>
-              Connect your wallet to see Grow Packs from past seasons.
+              {t("history.connect")}
             </span>
           </div>
         </div>
@@ -1698,7 +1700,7 @@ function HistoryTab({ onViewPack }: { onViewPack: () => void }) {
         <div className={styles.box}>
           <div className={styles.boxBody} style={{ textAlign: "center", padding: 28 }}>
             <span style={{ fontSize: 13, color: "rgba(255, 230, 210, 0.55)" }}>
-              Reading your Grow Pack history from devnet…
+              {t("history.loading")}
             </span>
           </div>
         </div>
@@ -1711,7 +1713,7 @@ function HistoryTab({ onViewPack }: { onViewPack: () => void }) {
       <div className={styles.timelineSingle}>
         <div className={styles.box}>
           <div className={styles.boxHeader}>
-            <h2 className={styles.boxTitle}>Couldn&apos;t reach the chain</h2>
+            <h2 className={styles.boxTitle}>{t("common.couldnt_reach_chain")}</h2>
           </div>
           <div className={styles.boxBody}>
             <span style={{ fontSize: 12, color: "rgba(255, 230, 210, 0.55)" }}>
@@ -1728,12 +1730,11 @@ function HistoryTab({ onViewPack }: { onViewPack: () => void }) {
       <div className={styles.timelineSingle}>
         <div className={styles.box}>
           <div className={styles.boxHeader}>
-            <h2 className={styles.boxTitle}>No Grow Packs yet</h2>
+            <h2 className={styles.boxTitle}>{t("history.no_packs")}</h2>
           </div>
           <div className={styles.boxBody}>
             <span style={{ fontSize: 13, color: "rgba(255, 230, 210, 0.72)" }}>
-              You haven&apos;t requested a Grow Pack from this wallet in the last{" "}
-              {HISTORY_SEASONS_LOOKBACK} seasons. Open the Apply tab to get started.
+              {t("history.empty_body")}
             </span>
           </div>
         </div>
@@ -1745,7 +1746,7 @@ function HistoryTab({ onViewPack }: { onViewPack: () => void }) {
 
   return (
     <div className={styles.timelineSingle}>
-      <SectionHeader>Past Grow Packs</SectionHeader>
+      <SectionHeader>{t("history.title")}</SectionHeader>
       <div style={{ display: "grid", gap: 12 }}>
         {rows.map((row) => (
           <HistoryCard key={row.address} row={row} onView={onViewPack} />
@@ -2014,6 +2015,7 @@ function DealHistoryCard({
 }
 
 function HistoryCard({ row, onView }: { row: HistoryRow; onView: () => void }) {
+  const { t } = useT();
   const { season, address, pack, meta } = row;
   const currentYear = new Date().getFullYear();
   const isCurrent = season === currentYear;
@@ -2029,53 +2031,53 @@ function HistoryCard({ row, onView }: { row: HistoryRow; onView: () => void }) {
   return (
     <div className={styles.box}>
       <div className={styles.boxHeader}>
-        <h2 className={styles.boxTitle}>Season {season}</h2>
+        <h2 className={styles.boxTitle}>{t("history.season")} {season}</h2>
         <span className={styles.boxLabel}>
-          {isCurrent ? "Current" : "Past"}
+          {isCurrent ? t("history.current") : t("history.past")}
         </span>
       </div>
       <div className={styles.boxBody}>
-        <DetailRow label="Status" value={pack.status} highlight />
+        <DetailRow label={t("common.status")} value={translateStatus(pack.status, t)} highlight />
         {meta ? (
           <DetailRow
-            label="Crop"
+            label={t("common.crop")}
             value={`${meta.crop} · ${meta.hectares} ha`}
           />
         ) : null}
-        <DetailRow label="Bundle cost" value={formatRand(pack.bundleCost)} />
-        <DetailRow label="Total repayment" value={formatRand(pack.totalRepayment)} />
+        <DetailRow label={t("common.bundle_cost")} value={formatRand(pack.bundleCost)} />
+        <DetailRow label={t("common.total_repayment")} value={formatRand(pack.totalRepayment)} />
         {pack.insurancePayout > 0n ? (
           <DetailRow
-            label="Insurance payout"
+            label={t("common.insurance_payout")}
             value={formatRand(pack.insurancePayout)}
           />
         ) : null}
         {showSettleDetail ? (
           <>
             <DetailRow
-              label="Harvest sale"
+              label={t("history.harvest_sale")}
               value={formatRand(pack.saleProceeds)}
             />
             <DetailRow
-              label="Repaid"
+              label={t("history.repaid")}
               value={formatRand(pack.repaid)}
               highlight
             />
             {pack.surplus > 0n ? (
               <DetailRow
-                label="Surplus to you"
+                label={t("history.surplus_to_you")}
                 value={formatRand(pack.surplus)}
               />
             ) : null}
             {pack.defaulted > 0n ? (
               <DetailRow
-                label="Outstanding"
+                label={t("history.outstanding")}
                 value={formatRand(pack.defaulted)}
               />
             ) : null}
           </>
         ) : null}
-        <DetailRow label="Pack" value={shortPackId(address)} mono />
+        <DetailRow label={t("common.pack")} value={shortPackId(address)} mono />
         {isCurrent ? (
           <button
             type="button"
@@ -2093,7 +2095,7 @@ function HistoryCard({ row, onView }: { row: HistoryRow; onView: () => void }) {
               cursor: "pointer",
             }}
           >
-            View on Insurance tab →
+            {t("history.view_insurance")} →
           </button>
         ) : null}
       </div>

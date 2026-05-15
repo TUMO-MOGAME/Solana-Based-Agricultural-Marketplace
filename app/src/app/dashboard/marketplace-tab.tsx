@@ -462,7 +462,7 @@ export function MarketplaceTab() {
               fontWeight: 700,
             }}
           >
-            Your pending harvests
+            {t("marketplace.your_harvests")}
           </span>
         </div>
         <FarmerHarvests />
@@ -539,6 +539,7 @@ function BuyerOfferCard({
   onMatch: () => void;
   onCancel: () => Promise<string>;
 }) {
+  const { t } = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -647,7 +648,7 @@ function BuyerOfferCard({
               }}
               title={`Direct buyer pays R ${ZAR.format(savingsPerTon)}/ton more than the typical local middleman`}
             >
-              <TrendingUp size={11} />+{savingsPct}% vs middleman
+              <TrendingUp size={11} />+{savingsPct}% {t("marketplace.vs_middleman")}
             </div>
           ) : null}
         </div>
@@ -679,13 +680,13 @@ function BuyerOfferCard({
                 marginTop: 2,
               }}
             >
-              Up to <strong>{o.maxQuantityTons} tons</strong>
+              {t("marketplace.up_to")} <strong>{o.maxQuantityTons} {t("marketplace.tons")}</strong>
               {middleman > 0 ? (
                 <>
                   {" "}
                   ·{" "}
                   <span style={{ color: "rgba(255, 230, 210, 0.35)" }}>
-                    middleman ≈ R {ZAR.format(middleman)}/ton
+                    {t("marketplace.middleman_approx")} R {ZAR.format(middleman)}/ton
                   </span>
                 </>
               ) : null}
@@ -714,7 +715,7 @@ function BuyerOfferCard({
                   opacity: busy ? 0.7 : 1,
                 }}
               >
-                {busy ? <Loader2 size={11} /> : <Trash2 size={11} />} Cancel
+                {busy ? <Loader2 size={11} /> : <Trash2 size={11} />} {t("marketplace.cancel")}
               </button>
             ) : null}
             <button
@@ -738,7 +739,7 @@ function BuyerOfferCard({
                 gap: 6,
               }}
             >
-              Match buyer <ArrowRight size={12} />
+              {t("marketplace.match")} <ArrowRight size={12} />
             </button>
           </div>
         </div>
