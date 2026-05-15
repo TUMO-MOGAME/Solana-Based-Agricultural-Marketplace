@@ -12,7 +12,7 @@ export default function WelcomePage() {
     <main
       className="relative min-h-screen overflow-hidden"
       style={{
-        background: "#1a0f0c",
+        background: "transparent",
         color: "rgba(255, 245, 230, 0.95)",
         fontFamily: "var(--font-inter), Inter, system-ui, sans-serif",
       }}

@@ -12,7 +12,7 @@ export default function DashboardLoading() {
     <div
       className="relative flex h-[100svh] w-full items-center justify-center overflow-hidden"
       style={{
-        backgroundColor: "#1a0f0c",
+        backgroundColor: "transparent",
         fontFamily: "var(--font-inter), Inter, system-ui, sans-serif",
       }}
     >

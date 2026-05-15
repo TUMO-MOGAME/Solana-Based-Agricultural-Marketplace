@@ -224,7 +224,7 @@ export default function CoopPage() {
     <div
       style={{
         minHeight: "100vh",
-        background: "#1a0f0c",
+        background: "transparent",
         color: "rgba(255, 245, 230, 0.92)",
         fontFamily: "var(--font-inter), Inter, system-ui, sans-serif",
         position: "relative",

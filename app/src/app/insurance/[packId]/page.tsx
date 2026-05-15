@@ -232,7 +232,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       style={{
         position: "relative",
         minHeight: "100svh",
-        background: "#1a0f0c",
+        background: "transparent",
         color: "rgba(255, 245, 230, 0.95)",
         fontFamily: "var(--font-inter), Inter, system-ui, sans-serif",
         padding: "20px 16px 32px",

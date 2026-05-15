@@ -12,7 +12,7 @@
   justify-content: center;
   align-items: center;
   padding: clamp(12px, 2.5vh, 28px) clamp(12px, 4vw, 24px);
-  background: #1a0f0c;
+  background: transparent;
   color: rgba(255, 245, 230, 0.95);
   overflow: hidden;  /* card is sized to fit — no scroll */
 

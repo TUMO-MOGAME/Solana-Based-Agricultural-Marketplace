@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Inter } from "next/font/google";
 import { VunaWalletProvider } from "@/lib/vuna/provider";
+import { BackgroundVideo } from "@/components/background-video";
 import "./globals.css";
 
 // Satoshi is loaded locally via @font-face in globals.css (see public/fonts/).
@@ -48,6 +49,7 @@ export default function RootLayout({
       <body
         className={`${geistMono.variable} ${inter.variable} font-sans antialiased min-h-[100svh] w-full overflow-x-hidden`}
       >
+        <BackgroundVideo />
         <VunaWalletProvider>{children}</VunaWalletProvider>
       </body>
     </html>
