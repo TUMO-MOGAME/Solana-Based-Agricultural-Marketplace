@@ -32,6 +32,12 @@ import {
   ArrowLeft,
   Droplets,
   UserPlus,
+  History,
+  Users,
+  Copy,
+  Check,
+  Trash2,
+  ExternalLink,
 } from "lucide-react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
@@ -61,12 +67,119 @@ const shortPk = (pk: PublicKey | string): string => {
   return s.length > 8 ? `${s.slice(0, 4)}…${s.slice(-4)}` : s;
 };
 
+// ─── audit log ───────────────────────────────────────────────────────
+// Persisted record of every action taken through /coop. Stored in
+// localStorage so it survives reloads but never leaves the device.
+// Capped at the most recent MAX_AUDIT entries — enough for a demo
+// session, small enough to render flat without virtualisation.
+
+const AUDIT_STORAGE_KEY = "vuna:coop:audit:v1";
+const MAX_AUDIT = 50;
+
+type AuditAction =
+  | "approve"
+  | "disburse"
+  | "trigger"
+  | "settle"
+  | "register";
+
+type AuditEntry = {
+  id: string;
+  ts: number;
+  action: AuditAction;
+  status: "ok" | "error";
+  // For lifecycle actions: the pack PDA. For register: the farmer pubkey.
+  target: string;
+  // Optional human-readable label (e.g. season number, rainfall %, sale R).
+  detail?: string;
+  // Set on success.
+  signature?: string;
+  // Set on failure — pulled from program logs when available.
+  errorMessage?: string;
+  // Operator wallet at the time of the action.
+  operator: string;
+};
+
+function loadAuditLog(): AuditEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(AUDIT_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((e): e is AuditEntry =>
+        Boolean(
+          e &&
+            typeof e === "object" &&
+            typeof (e as AuditEntry).id === "string" &&
+            typeof (e as AuditEntry).ts === "number" &&
+            typeof (e as AuditEntry).action === "string",
+        ),
+      )
+      .slice(0, MAX_AUDIT);
+  } catch {
+    return [];
+  }
+}
+
+function saveAuditLog(entries: AuditEntry[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      AUDIT_STORAGE_KEY,
+      JSON.stringify(entries.slice(0, MAX_AUDIT)),
+    );
+  } catch {
+    // Quota exceeded or storage disabled — nothing useful we can do.
+  }
+}
+
+function useAuditLog() {
+  const [entries, setEntries] = useState<AuditEntry[]>([]);
+
+  // Hydrate once on mount; SSR-safe.
+  useEffect(() => {
+    setEntries(loadAuditLog());
+  }, []);
+
+  const record = useCallback(
+    (entry: Omit<AuditEntry, "id" | "ts">) => {
+      setEntries((prev) => {
+        const next: AuditEntry[] = [
+          {
+            ...entry,
+            id:
+              typeof crypto !== "undefined" && "randomUUID" in crypto
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            ts: Date.now(),
+          },
+          ...prev,
+        ].slice(0, MAX_AUDIT);
+        saveAuditLog(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const clear = useCallback(() => {
+    setEntries([]);
+    saveAuditLog([]);
+  }, []);
+
+  return { entries, record, clear };
+}
+
 // ─── page ────────────────────────────────────────────────────────────
 
 export default function CoopPage() {
   const { connection } = useConnection();
   const { publicKey, sendTransaction, connecting } = useWallet();
   const { setVisible: setWalletModalVisible } = useWalletModal();
+
+  const audit = useAuditLog();
 
   const [rows, setRows] = useState<Row[]>([]);
   const [loadState, setLoadState] = useState<
@@ -144,6 +257,7 @@ export default function CoopPage() {
         typeof makeApproveGrowPackIx
       >,
       okText: string,
+      auditMeta: { action: AuditAction; detail?: string },
     ) => {
       if (!publicKey || !sendTransaction) {
         setWalletModalVisible(true);
@@ -151,11 +265,21 @@ export default function CoopPage() {
       }
       setBusyAddress(address.toBase58());
       setToast(null);
+      const operator = publicKey.toBase58();
+      const target = address.toBase58();
       try {
         const tx = new Transaction().add(buildIx(publicKey));
         const sig = await sendTransaction(tx, connection);
         await connection.confirmTransaction(sig, "confirmed");
         setToast({ kind: "ok", text: `${okText} — ${shortPk(sig)}` });
+        audit.record({
+          action: auditMeta.action,
+          status: "ok",
+          target,
+          detail: auditMeta.detail,
+          signature: sig,
+          operator,
+        });
         refresh();
       } catch (e) {
         // wallet-adapter wraps the underlying SendTransactionError as
@@ -177,11 +301,19 @@ export default function CoopPage() {
           }
         }
         setToast({ kind: "err", text: msg });
+        audit.record({
+          action: auditMeta.action,
+          status: "error",
+          target,
+          detail: auditMeta.detail,
+          errorMessage: msg,
+          operator,
+        });
       } finally {
         setBusyAddress(null);
       }
     },
-    [publicKey, sendTransaction, connection, setWalletModalVisible, refresh],
+    [publicKey, sendTransaction, connection, setWalletModalVisible, refresh, audit],
   );
 
   const onApprove = useCallback(
@@ -195,6 +327,7 @@ export default function CoopPage() {
             pack: row.address,
           }),
         `Approved pack ${shortPk(row.address)}`,
+        { action: "approve", detail: `Season ${row.pack.seasonId}` },
       ),
     [signAndSend],
   );
@@ -210,6 +343,7 @@ export default function CoopPage() {
             pack: row.address,
           }),
         `Disbursed pack ${shortPk(row.address)} — insurance now live`,
+        { action: "disburse", detail: `Season ${row.pack.seasonId}` },
       ),
     [signAndSend],
   );
@@ -226,6 +360,7 @@ export default function CoopPage() {
             rainfallPercent,
           }),
         `Triggered payout @ ${rainfallPercent}% rainfall`,
+        { action: "trigger", detail: `${rainfallPercent}% rainfall` },
       ),
     [signAndSend],
   );
@@ -242,6 +377,7 @@ export default function CoopPage() {
             saleProceeds,
           }),
         `Closed pack ${shortPk(row.address)} — repayment settled`,
+        { action: "settle", detail: `Sale ${formatRand(saleProceeds)}` },
       ),
     [signAndSend],
   );
@@ -277,27 +413,12 @@ export default function CoopPage() {
         }}
       />
 
-      <div
-        style={{
-          position: "relative",
-          maxWidth: 980,
-          margin: "0 auto",
-          padding: "32px 24px 80px",
-          zIndex: 1,
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-            marginBottom: 32,
-            flexWrap: "wrap",
-          }}
-        >
+      <div className="coop-shell">
+        {/* Header — single sticky row */}
+        <header className="coop-header">
           <Link
             href="/"
+            className="coop-home"
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -309,6 +430,7 @@ export default function CoopPage() {
               borderRadius: 999,
               border: "1px solid rgba(255, 230, 210, 0.12)",
               background: "rgba(255, 255, 255, 0.04)",
+              whiteSpace: "nowrap",
             }}
           >
             <ArrowLeft size={14} />
@@ -317,11 +439,11 @@ export default function CoopPage() {
           <img
             src="/brand/logo-mark.svg"
             alt="Mazra'at albaan"
-            width={40}
-            height={40}
+            width={36}
+            height={36}
             style={{
-              borderRadius: 12,
-              boxShadow: "0 8px 20px rgba(0, 0, 0, 0.35)",
+              borderRadius: 10,
+              boxShadow: "0 6px 18px rgba(0, 0, 0, 0.35)",
               display: "block",
               flexShrink: 0,
             }}
@@ -329,10 +451,10 @@ export default function CoopPage() {
           <div style={{ minWidth: 0, flex: 1 }}>
             <div
               style={{
-                fontSize: 11,
-                letterSpacing: "0.16em",
+                fontSize: 10,
+                letterSpacing: "0.18em",
                 textTransform: "uppercase",
-                color: "rgba(255, 230, 210, 0.55)",
+                color: "rgba(255, 230, 210, 0.5)",
                 fontWeight: 700,
               }}
             >
@@ -340,11 +462,12 @@ export default function CoopPage() {
             </div>
             <h1
               style={{
-                margin: "4px 0 0",
-                fontSize: 26,
+                margin: "2px 0 0",
+                fontSize: 20,
                 fontWeight: 800,
                 color: "rgba(255, 245, 230, 0.95)",
                 lineHeight: 1.15,
+                letterSpacing: "-0.01em",
               }}
             >
               Mazra&apos;at albaan — Co-op
@@ -368,6 +491,7 @@ export default function CoopPage() {
               fontWeight: 700,
               cursor: loadState === "loading" ? "default" : "pointer",
               opacity: loadState === "loading" ? 0.6 : 1,
+              whiteSpace: "nowrap",
             }}
           >
             {loadState === "loading" ? (
@@ -378,85 +502,94 @@ export default function CoopPage() {
             Refresh
           </button>
           <WalletButton />
-        </div>
+        </header>
 
-        {/* Wallet hint when not connected */}
-        {!publicKey ? (
+        {/* Status bar — chips left, signed-in pill right */}
+        <div className="coop-statusbar">
           <div
-            className={dashStyles.box}
             style={{
-              marginBottom: 24,
-              borderColor: "rgba(255, 184, 107, 0.45)",
-              background: "rgba(255, 184, 107, 0.06)",
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              alignItems: "center",
             }}
           >
-            <div className={dashStyles.boxBody}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: "rgba(255, 245, 230, 0.95)",
-                }}
-              >
-                <ShieldCheck size={18} style={{ color: "#ffb86b" }} />
-                Connect a co-op wallet to take action.
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "rgba(255, 230, 210, 0.65)",
-                  marginTop: 6,
-                  lineHeight: 1.5,
-                }}
-              >
-                The wallet you connect must equal the cooperative recorded on
-                each FarmerAccount being acted on (the on-chain program enforces
-                this with{" "}
-                <code style={{ fontSize: 11 }}>has_one = cooperative</code>).
-                For the demo, that&apos;s your default Solana CLI keypair —
-                whichever wallet originally ran <code>setup-devnet-demo.mjs</code>.
-              </div>
-            </div>
+            <Chip label="Pending" count={pendingCount} tone="warn" />
+            <Chip label="To disburse" count={approvedCount} tone="info" />
+            <Chip label="Active" count={activeCount} tone="ok" />
+            <Chip label="To close" count={harvestReadyCount} tone="info" />
+            <Chip label="Total" count={totalCount} tone="muted" />
           </div>
-        ) : (
-          // Connected — show the pubkey + a network reminder. The most
-          // common failure on first run is Phantom being on mainnet
-          // instead of devnet; surface that prominently.
-          <div
-            style={{
-              marginBottom: 24,
-              padding: "12px 14px",
-              borderRadius: 12,
-              background: "rgba(255, 255, 255, 0.04)",
-              border: "1px solid rgba(255, 230, 210, 0.12)",
-              fontSize: 12,
-              color: "rgba(255, 230, 210, 0.72)",
-              lineHeight: 1.5,
-            }}
-          >
-            Signed in as{" "}
-            <code
+          {publicKey ? (
+            <div
+              title={publicKey.toBase58()}
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "6px 12px",
+                borderRadius: 999,
+                background: "rgba(255, 255, 255, 0.04)",
+                border: "1px solid rgba(255, 230, 210, 0.12)",
                 fontSize: 11,
-                fontFamily:
-                  "var(--font-geist-mono), ui-monospace, monospace",
-                color: "#ffb86b",
+                color: "rgba(255, 230, 210, 0.72)",
               }}
             >
-              {publicKey.toBase58()}
-            </code>
-            <span style={{ display: "block", marginTop: 4 }}>
-              Make sure Phantom is set to <strong>Devnet</strong> (Phantom
-              menu → Settings → Developer settings → Change network → Devnet).
-              If a tx fails with &quot;Unexpected error&quot;, it&apos;s
-              usually that, or your wallet isn&apos;t the cooperative on the
-              farmer record.
-            </span>
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 999,
+                  background: "#7adf7d",
+                  boxShadow: "0 0 8px rgba(122, 223, 125, 0.7)",
+                }}
+              />
+              <span
+                style={{
+                  fontFamily:
+                    "var(--font-geist-mono), ui-monospace, monospace",
+                  color: "#ffb86b",
+                }}
+              >
+                {shortPk(publicKey.toBase58())}
+              </span>
+              <span>· devnet</span>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Wallet-not-connected banner */}
+        {!publicKey ? (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "12px 14px",
+              borderRadius: 12,
+              borderLeft: "3px solid #ffb86b",
+              background: "rgba(255, 184, 107, 0.06)",
+              border: "1px solid rgba(255, 184, 107, 0.35)",
+              fontSize: 12,
+              color: "rgba(255, 230, 210, 0.78)",
+              lineHeight: 1.5,
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 10,
+            }}
+          >
+            <ShieldCheck
+              size={16}
+              style={{ color: "#ffb86b", flexShrink: 0, marginTop: 1 }}
+            />
+            <div>
+              <strong style={{ color: "rgba(255, 245, 230, 0.95)" }}>
+                Connect a co-op wallet to take action.
+              </strong>{" "}
+              The wallet must equal the cooperative recorded on each
+              FarmerAccount being acted on. For the demo, that&apos;s the
+              keypair that ran <code>setup-devnet-demo.mjs</code>.
+            </div>
           </div>
-        )}
+        ) : null}
 
         {/* Toast */}
         {toast ? (
@@ -476,8 +609,7 @@ export default function CoopPage() {
                   ? "rgba(46, 125, 50, 0.55)"
                   : "rgba(192, 57, 43, 0.55)"
               }`,
-              color:
-                toast.kind === "ok" ? "#7adf7d" : "#ff9b8e",
+              color: toast.kind === "ok" ? "#7adf7d" : "#ff9b8e",
               fontSize: 12,
               fontWeight: 600,
               display: "flex",
@@ -511,106 +643,149 @@ export default function CoopPage() {
           </div>
         ) : null}
 
-        {/* Summary chips */}
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 24,
-            flexWrap: "wrap",
-          }}
-        >
-          <Chip label="Pending" count={pendingCount} tone="warn" />
-          <Chip label="Awaiting disbursement" count={approvedCount} tone="info" />
-          <Chip label="Active" count={activeCount} tone="ok" />
-          <Chip label="Ready to close" count={harvestReadyCount} tone="info" />
-          <Chip label="All packs on devnet" count={totalCount} tone="muted" />
+        {/* Two-column admin grid: actions on the left, context on the right */}
+        <div className="coop-grid">
+          <main className="coop-main">
+            <RegisterFarmerPanel
+              cooperative={publicKey}
+              connection={connection}
+              sendTransaction={sendTransaction}
+              onConnectClick={() => setWalletModalVisible(true)}
+              recordAudit={audit.record}
+            />
+
+            {loadState === "loading" ? (
+              <BlockMessage icon={<Loader2 className="spin" />}>
+                Reading every Grow Pack from devnet…
+              </BlockMessage>
+            ) : loadState === "error" ? (
+              <BlockMessage icon={<AlertCircle />} tone="warn">
+                Couldn&apos;t reach the chain: {errorMsg}
+              </BlockMessage>
+            ) : (
+              <>
+                <Section
+                  title="Pending applications"
+                  subtitle="Newly requested Grow Packs awaiting your approval."
+                  rows={buckets.pending}
+                  emptyText="No pending applications. Ask a farmer to apply from the dashboard."
+                  renderAction={(row) => (
+                    <ActionButton
+                      busy={busyAddress === row.address.toBase58()}
+                      disabled={!publicKey}
+                      onClick={() => onApprove(row)}
+                      label="Approve"
+                    />
+                  )}
+                />
+
+                <Section
+                  title="Awaiting disbursement"
+                  subtitle="Approved packs — confirm inputs delivered to make insurance live."
+                  rows={buckets.approved}
+                  emptyText="Nothing here right now."
+                  renderAction={(row) => (
+                    <ActionButton
+                      busy={busyAddress === row.address.toBase58()}
+                      disabled={!publicKey}
+                      onClick={() => onDisburse(row)}
+                      label="Disburse"
+                    />
+                  )}
+                />
+
+                <Section
+                  title="Active packs — drought watch"
+                  subtitle="Insurance is live. Enter observed rainfall to trigger payout if the threshold is breached."
+                  rows={buckets.active}
+                  emptyText="No active packs to monitor."
+                  renderAction={(row) => (
+                    <TriggerControl
+                      row={row}
+                      busy={busyAddress === row.address.toBase58()}
+                      disabled={!publicKey}
+                      onTrigger={onTrigger}
+                    />
+                  )}
+                />
+
+                <Section
+                  title="Harvest close"
+                  subtitle="Active or post-drought packs that can be settled. Enter the sale proceeds — the program splits funds into repaid, surplus, and shortfall, then updates credit score."
+                  rows={buckets.harvestReady}
+                  emptyText="No packs ready for harvest close yet."
+                  renderAction={(row) => (
+                    <SettleControl
+                      row={row}
+                      busy={busyAddress === row.address.toBase58()}
+                      disabled={!publicKey}
+                      onSettle={onSettle}
+                    />
+                  )}
+                />
+              </>
+            )}
+          </main>
+
+          <aside className="coop-aside">
+            <FarmersPanel rows={rows} />
+            <AuditLogPanel entries={audit.entries} onClear={audit.clear} />
+          </aside>
         </div>
-
-        {/* Farmer registration — small, always visible. */}
-        <RegisterFarmerPanel
-          cooperative={publicKey}
-          connection={connection}
-          sendTransaction={sendTransaction}
-          onConnectClick={() => setWalletModalVisible(true)}
-        />
-
-        {/* Load states */}
-        {loadState === "loading" ? (
-          <BlockMessage icon={<Loader2 className="spin" />}>
-            Reading every Grow Pack from devnet…
-          </BlockMessage>
-        ) : loadState === "error" ? (
-          <BlockMessage icon={<AlertCircle />} tone="warn">
-            Couldn&apos;t reach the chain: {errorMsg}
-          </BlockMessage>
-        ) : (
-          <>
-            <Section
-              title="Pending applications"
-              subtitle="Newly requested Grow Packs awaiting your approval."
-              rows={buckets.pending}
-              emptyText="No pending applications. Ask a farmer to apply from the dashboard."
-              renderAction={(row) => (
-                <ActionButton
-                  busy={busyAddress === row.address.toBase58()}
-                  disabled={!publicKey}
-                  onClick={() => onApprove(row)}
-                  label="Approve"
-                />
-              )}
-            />
-
-            <Section
-              title="Awaiting disbursement"
-              subtitle="Approved packs — confirm inputs delivered to make insurance live."
-              rows={buckets.approved}
-              emptyText="Nothing here right now."
-              renderAction={(row) => (
-                <ActionButton
-                  busy={busyAddress === row.address.toBase58()}
-                  disabled={!publicKey}
-                  onClick={() => onDisburse(row)}
-                  label="Disburse"
-                />
-              )}
-            />
-
-            <Section
-              title="Active packs — drought watch"
-              subtitle="Insurance is live. Enter observed rainfall to trigger payout if the threshold is breached."
-              rows={buckets.active}
-              emptyText="No active packs to monitor."
-              renderAction={(row) => (
-                <TriggerControl
-                  row={row}
-                  busy={busyAddress === row.address.toBase58()}
-                  disabled={!publicKey}
-                  onTrigger={onTrigger}
-                />
-              )}
-            />
-
-            <Section
-              title="Harvest close"
-              subtitle="Active or post-drought packs that can be settled. Enter the harvest sale proceeds — the program splits funds into repaid, surplus to farmer, and any shortfall, then updates credit score."
-              rows={buckets.harvestReady}
-              emptyText="No packs ready for harvest close yet."
-              renderAction={(row) => (
-                <SettleControl
-                  row={row}
-                  busy={busyAddress === row.address.toBase58()}
-                  disabled={!publicKey}
-                  onSettle={onSettle}
-                />
-              )}
-            />
-          </>
-        )}
       </div>
 
-      {/* spin keyframe — used by the Loader2 icons above */}
+      {/* Layout + spin keyframe — kept inline so /coop owns its admin grid
+          without polluting the dashboard CSS module. */}
       <style jsx global>{`
+        .coop-shell {
+          position: relative;
+          max-width: 1280px;
+          margin: 0 auto;
+          padding: 24px 24px 80px;
+          z-index: 1;
+        }
+        .coop-header {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          margin-bottom: 20px;
+          flex-wrap: wrap;
+        }
+        .coop-statusbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-bottom: 16px;
+          padding-bottom: 16px;
+          border-bottom: 1px solid rgba(255, 230, 210, 0.08);
+        }
+        .coop-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 360px;
+          gap: 24px;
+          align-items: start;
+        }
+        .coop-main {
+          min-width: 0;
+        }
+        .coop-aside {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          position: sticky;
+          top: 16px;
+        }
+        @media (max-width: 980px) {
+          .coop-shell { padding: 16px 16px 64px; }
+          .coop-grid {
+            grid-template-columns: minmax(0, 1fr);
+          }
+          .coop-aside {
+            position: static;
+          }
+        }
         @keyframes coop-spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
@@ -933,6 +1108,7 @@ function RegisterFarmerPanel({
   connection,
   sendTransaction,
   onConnectClick,
+  recordAudit,
 }: {
   cooperative: PublicKey | null;
   connection: import("@solana/web3.js").Connection;
@@ -940,6 +1116,7 @@ function RegisterFarmerPanel({
     | ((tx: Transaction, conn: import("@solana/web3.js").Connection) => Promise<string>)
     | undefined;
   onConnectClick: () => void;
+  recordAudit: (entry: Omit<AuditEntry, "id" | "ts">) => void;
 }) {
   const [farmerInput, setFarmerInput] = useState("");
   const [region, setRegion] = useState(0);
@@ -963,6 +1140,9 @@ function RegisterFarmerPanel({
       return;
     }
     setBusy(true);
+    const operator = cooperative.toBase58();
+    const target = farmerPubkey.toBase58();
+    const regionLabel = REGISTRATION_REGIONS[region].label;
     try {
       const farmerIdHash = await farmerIdHashFrom(farmerPubkey.toBase58());
       const ix = makeRegisterFarmerIx({
@@ -974,8 +1154,16 @@ function RegisterFarmerPanel({
       const sig = await sendTransaction(tx, connection);
       await connection.confirmTransaction(sig, "confirmed");
       setOkMsg(
-        `Registered ${shortPk(farmerPubkey)} in ${REGISTRATION_REGIONS[region].label} · tx ${shortPk(sig)}`,
+        `Registered ${shortPk(farmerPubkey)} in ${regionLabel} · tx ${shortPk(sig)}`,
       );
+      recordAudit({
+        action: "register",
+        status: "ok",
+        target,
+        detail: regionLabel,
+        signature: sig,
+        operator,
+      });
       setFarmerInput("");
     } catch (e) {
       let msg = e instanceof Error ? e.message : String(e);
@@ -990,6 +1178,14 @@ function RegisterFarmerPanel({
         }
       }
       setError(msg);
+      recordAudit({
+        action: "register",
+        status: "error",
+        target,
+        detail: regionLabel,
+        errorMessage: msg,
+        operator,
+      });
     } finally {
       setBusy(false);
     }
@@ -1284,6 +1480,483 @@ function TriggerControl({
         disabled={disabled}
         onClick={() => onTrigger(row, rainfall)}
       />
+    </div>
+  );
+}
+
+// ─── audit log panel ─────────────────────────────────────────────────
+
+const ACTION_META: Record<
+  AuditAction,
+  { label: string; verb: string; tint: string }
+> = {
+  approve: { label: "Approve", verb: "approved", tint: "#7adf7d" },
+  disburse: { label: "Disburse", verb: "disbursed", tint: "#ffb86b" },
+  trigger: { label: "Payout", verb: "triggered payout for", tint: "#ff9b8e" },
+  settle: { label: "Settle", verb: "closed", tint: "#7adf7d" },
+  register: { label: "Register", verb: "registered farmer", tint: "#ffb86b" },
+};
+
+function formatRelativeTime(ts: number, now: number): string {
+  const diff = Math.max(0, now - ts);
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  return `${day}d ago`;
+}
+
+function CopyButton({ value, title }: { value: string; title?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      title={title ?? "Copy"}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(value);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1400);
+        } catch {
+          // Clipboard blocked; silent — the value is still visible.
+        }
+      }}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "3px 7px",
+        borderRadius: 999,
+        border: "1px solid rgba(255, 230, 210, 0.16)",
+        background: copied ? "rgba(46, 125, 50, 0.18)" : "rgba(255, 255, 255, 0.04)",
+        color: copied ? "#7adf7d" : "rgba(255, 230, 210, 0.72)",
+        fontSize: 10,
+        fontWeight: 700,
+        cursor: "pointer",
+        lineHeight: 1,
+      }}
+    >
+      {copied ? <Check size={10} /> : <Copy size={10} />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function AuditLogPanel({
+  entries,
+  onClear,
+}: {
+  entries: AuditEntry[];
+  onClear: () => void;
+}) {
+  // Re-render every 30s so "2m ago" stays roughly current — cheaper than
+  // a per-row timer.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div
+      style={{
+        padding: 16,
+        borderRadius: 14,
+        background: "rgba(255, 255, 255, 0.04)",
+        border: "1px solid rgba(255, 230, 210, 0.14)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 4,
+        }}
+      >
+        <History size={14} style={{ color: "#ffb86b" }} />
+        <h3
+          style={{
+            fontSize: 14,
+            fontWeight: 800,
+            color: "rgba(255, 245, 230, 0.95)",
+            margin: 0,
+          }}
+        >
+          Recent activity
+        </h3>
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            padding: "2px 7px",
+            borderRadius: 999,
+            background: "rgba(255, 255, 255, 0.06)",
+            color: "rgba(255, 230, 210, 0.65)",
+          }}
+        >
+          {entries.length}
+        </span>
+        {entries.length > 0 ? (
+          <button
+            type="button"
+            onClick={onClear}
+            title="Clear local audit log"
+            style={{
+              marginLeft: "auto",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              background: "transparent",
+              border: "none",
+              color: "rgba(255, 230, 210, 0.5)",
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: "pointer",
+              padding: "2px 4px",
+            }}
+          >
+            <Trash2 size={10} />
+            Clear
+          </button>
+        ) : null}
+      </div>
+      <p
+        style={{
+          fontSize: 11,
+          color: "rgba(255, 230, 210, 0.55)",
+          margin: "0 0 12px",
+          lineHeight: 1.5,
+        }}
+      >
+        Every action this browser takes through /coop, persisted locally so
+        you can spot what changed since you last looked.
+      </p>
+      {entries.length === 0 ? (
+        <div
+          style={{
+            padding: "18px 8px",
+            textAlign: "center",
+            fontSize: 11,
+            color: "rgba(255, 230, 210, 0.45)",
+            border: "1px dashed rgba(255, 230, 210, 0.12)",
+            borderRadius: 10,
+          }}
+        >
+          No actions recorded yet on this device.
+        </div>
+      ) : (
+        <ul
+          style={{
+            listStyle: "none",
+            padding: 0,
+            margin: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            maxHeight: 360,
+            overflowY: "auto",
+          }}
+        >
+          {entries.map((e) => {
+            const meta = ACTION_META[e.action];
+            const isOk = e.status === "ok";
+            return (
+              <li
+                key={e.id}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(255, 230, 210, 0.10)",
+                  background: isOk
+                    ? "rgba(255, 255, 255, 0.025)"
+                    : "rgba(192, 57, 43, 0.08)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 11,
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      padding: "2px 7px",
+                      borderRadius: 999,
+                      fontSize: 9,
+                      fontWeight: 800,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      background: `${meta.tint}22`,
+                      color: meta.tint,
+                      border: `1px solid ${meta.tint}55`,
+                    }}
+                  >
+                    {meta.label}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily:
+                        "var(--font-geist-mono), ui-monospace, monospace",
+                      color: "rgba(255, 245, 230, 0.85)",
+                    }}
+                  >
+                    {shortPk(e.target)}
+                  </span>
+                  {e.detail ? (
+                    <span style={{ color: "rgba(255, 230, 210, 0.55)" }}>
+                      · {e.detail}
+                    </span>
+                  ) : null}
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      fontSize: 10,
+                      color: "rgba(255, 230, 210, 0.45)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {formatRelativeTime(e.ts, now)}
+                  </span>
+                </div>
+                {isOk && e.signature ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 10,
+                      color: "rgba(255, 230, 210, 0.5)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily:
+                          "var(--font-geist-mono), ui-monospace, monospace",
+                      }}
+                    >
+                      tx {shortPk(e.signature)}
+                    </span>
+                    <a
+                      href={`https://explorer.solana.com/tx/${e.signature}?cluster=devnet`}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      title="Open on Solana Explorer"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 3,
+                        color: "rgba(255, 184, 107, 0.85)",
+                        textDecoration: "none",
+                      }}
+                    >
+                      <ExternalLink size={9} />
+                      Explorer
+                    </a>
+                  </div>
+                ) : null}
+                {!isOk && e.errorMessage ? (
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "#ff9b8e",
+                      whiteSpace: "pre-wrap",
+                      overflowWrap: "anywhere",
+                    }}
+                  >
+                    {e.errorMessage.split("\n").slice(0, 2).join(" — ")}
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ─── farmers / demo personas panel ───────────────────────────────────
+//
+// Auto-derived from the GrowPacks already on chain. Gives the demo
+// operator a quick "who's on devnet right now" panel with copy-pubkey
+// buttons so they can paste an address into the Register Farmer form,
+// Phantom, or share with a buyer for the marketplace demo.
+
+type FarmerSummary = {
+  farmer: PublicKey;
+  packCount: number;
+  latestSeasonId: number;
+  latestStatus: string;
+};
+
+function summariseFarmers(rows: Row[]): FarmerSummary[] {
+  const byFarmer = new Map<string, FarmerSummary>();
+  for (const r of rows) {
+    const key = r.pack.farmer.toBase58();
+    const existing = byFarmer.get(key);
+    if (!existing) {
+      byFarmer.set(key, {
+        farmer: r.pack.farmer,
+        packCount: 1,
+        latestSeasonId: r.pack.seasonId,
+        latestStatus: r.pack.status,
+      });
+    } else {
+      existing.packCount += 1;
+      if (r.pack.seasonId > existing.latestSeasonId) {
+        existing.latestSeasonId = r.pack.seasonId;
+        existing.latestStatus = r.pack.status;
+      }
+    }
+  }
+  return Array.from(byFarmer.values()).sort(
+    (a, b) =>
+      b.latestSeasonId - a.latestSeasonId ||
+      a.farmer.toBase58().localeCompare(b.farmer.toBase58()),
+  );
+}
+
+function FarmersPanel({ rows }: { rows: Row[] }) {
+  const farmers = useMemo(() => summariseFarmers(rows), [rows]);
+  return (
+    <div
+      style={{
+        padding: 16,
+        borderRadius: 14,
+        background: "rgba(255, 255, 255, 0.04)",
+        border: "1px solid rgba(255, 230, 210, 0.14)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 4,
+        }}
+      >
+        <Users size={14} style={{ color: "#ffb86b" }} />
+        <h3
+          style={{
+            fontSize: 14,
+            fontWeight: 800,
+            color: "rgba(255, 245, 230, 0.95)",
+            margin: 0,
+          }}
+        >
+          Farmers on devnet
+        </h3>
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            padding: "2px 7px",
+            borderRadius: 999,
+            background: "rgba(255, 255, 255, 0.06)",
+            color: "rgba(255, 230, 210, 0.65)",
+          }}
+        >
+          {farmers.length}
+        </span>
+      </div>
+      <p
+        style={{
+          fontSize: 11,
+          color: "rgba(255, 230, 210, 0.55)",
+          margin: "0 0 12px",
+          lineHeight: 1.5,
+        }}
+      >
+        Every farmer with at least one pack on chain. Copy an address to
+        paste into Phantom, the Register form, or share with a buyer for the
+        marketplace demo.
+      </p>
+      {farmers.length === 0 ? (
+        <div
+          style={{
+            padding: "18px 8px",
+            textAlign: "center",
+            fontSize: 11,
+            color: "rgba(255, 230, 210, 0.45)",
+            border: "1px dashed rgba(255, 230, 210, 0.12)",
+            borderRadius: 10,
+          }}
+        >
+          No farmers yet. Run <code>setup-devnet-demo.mjs</code> or use
+          Register above.
+        </div>
+      ) : (
+        <ul
+          style={{
+            listStyle: "none",
+            padding: 0,
+            margin: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            maxHeight: 360,
+            overflowY: "auto",
+          }}
+        >
+          {farmers.map((f) => {
+            const pk = f.farmer.toBase58();
+            return (
+              <li
+                key={pk}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(255, 230, 210, 0.10)",
+                  background: "rgba(255, 255, 255, 0.025)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontFamily:
+                        "var(--font-geist-mono), ui-monospace, monospace",
+                      color: "rgba(255, 245, 230, 0.92)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={pk}
+                  >
+                    {shortPk(pk)}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "rgba(255, 230, 210, 0.55)",
+                      marginTop: 2,
+                    }}
+                  >
+                    {f.packCount} pack{f.packCount === 1 ? "" : "s"} · latest
+                    season {f.latestSeasonId} · {f.latestStatus}
+                  </div>
+                </div>
+                <CopyButton value={pk} title="Copy farmer pubkey" />
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
