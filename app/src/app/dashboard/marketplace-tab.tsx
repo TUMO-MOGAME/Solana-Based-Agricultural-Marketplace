@@ -84,6 +84,15 @@ type OfferRow = {
   offer: BuyerOffer;
 };
 
+// Date filter — filters offers by `createdAt`. Cutoffs in seconds.
+const DATE_FILTERS = [
+  { value: "all", label: "All", windowSec: Infinity },
+  { value: "30d", label: "30 days", windowSec: 86400 * 30 },
+  { value: "7d", label: "7 days", windowSec: 86400 * 7 },
+  { value: "today", label: "Today", windowSec: 86400 },
+] as const;
+type DateFilter = (typeof DATE_FILTERS)[number]["value"];
+
 export function MarketplaceTab() {
   const { publicKey, sendTransaction } = useFarmerWallet();
   const { connection } = useConnection();
@@ -98,6 +107,8 @@ export function MarketplaceTab() {
 
   const [postModalOpen, setPostModalOpen] = useState(false);
   const [matchTarget, setMatchTarget] = useState<OfferRow | null>(null);
+
+  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
 
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
@@ -269,6 +280,14 @@ export function MarketplaceTab() {
     [publicKey, sendTransaction, connection, refresh],
   );
 
+  // Apply the date filter to the live offers list. Filters by `createdAt`.
+  const filteredOffers = useMemo(() => {
+    const window = DATE_FILTERS.find((f) => f.value === dateFilter)?.windowSec;
+    if (!window || window === Infinity) return offers;
+    const cutoff = Math.floor(Date.now() / 1000) - window;
+    return offers.filter((r) => Number(r.offer.createdAt) >= cutoff);
+  }, [offers, dateFilter]);
+
   // Average savings shown in the headline pitch card. Computed live
   // from the offers that are visible right now.
   const avgSavingsPct = useMemo(() => {
@@ -431,15 +450,117 @@ export function MarketplaceTab() {
             </div>
           </div>
         ) : (
-          offers.map((row) => (
-            <BuyerOfferCard
-              key={row.address.toBase58()}
-              row={row}
-              connectedWallet={publicKey}
-              onMatch={() => setMatchTarget(row)}
-              onCancel={() => handleCancelOffer(row)}
-            />
-          ))
+          <div className={styles.box} style={{ overflow: "hidden" }}>
+            <div className={styles.boxBody} style={{ padding: 0 }}>
+              {/* Filter bar + result count */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "10px 12px",
+                  borderBottom: "1px solid rgba(255, 230, 210, 0.08)",
+                  flexWrap: "wrap",
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                  {DATE_FILTERS.map((f) => {
+                    const active = dateFilter === f.value;
+                    return (
+                      <button
+                        key={f.value}
+                        type="button"
+                        onClick={() => setDateFilter(f.value)}
+                        style={{
+                          padding: "4px 10px",
+                          borderRadius: 999,
+                          border: active
+                            ? "1px solid rgba(255, 184, 107, 0.5)"
+                            : "1px solid rgba(255, 230, 210, 0.12)",
+                          background: active
+                            ? "rgba(255, 184, 107, 0.14)"
+                            : "transparent",
+                          color: active
+                            ? "#ffb86b"
+                            : "rgba(255, 230, 210, 0.55)",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          fontFamily: "inherit",
+                          cursor: "pointer",
+                          letterSpacing: "0.05em",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {f.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: "rgba(255, 230, 210, 0.45)",
+                    fontWeight: 700,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {filteredOffers.length} of {offers.length}
+                </span>
+              </div>
+
+              {filteredOffers.length === 0 ? (
+                <div
+                  style={{
+                    padding: "20px 14px",
+                    textAlign: "center",
+                    fontSize: 12,
+                    color: "rgba(255, 230, 210, 0.55)",
+                  }}
+                >
+                  No offers in this period. Try another filter.
+                </div>
+              ) : (
+                <>
+                  {/* Column headers */}
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "24px 1fr auto auto",
+                      gap: 10,
+                      alignItems: "center",
+                      padding: "8px 12px",
+                      borderBottom: "1px solid rgba(255, 230, 210, 0.06)",
+                      fontSize: 9,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      color: "rgba(255, 230, 210, 0.4)",
+                      fontWeight: 700,
+                    }}
+                  >
+                    <span>#</span>
+                    <span>Buyer</span>
+                    <span style={{ textAlign: "right" }}>
+                      Price · vol · expires
+                    </span>
+                    <span />
+                  </div>
+
+                  {/* Rows */}
+                  {filteredOffers.map((row, i) => (
+                    <BuyerOfferRow
+                      key={row.address.toBase58()}
+                      row={row}
+                      index={i}
+                      connectedWallet={publicKey}
+                      onMatch={() => setMatchTarget(row)}
+                      onCancel={() => handleCancelOffer(row)}
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
@@ -525,16 +646,18 @@ export function MarketplaceTab() {
 }
 
 // ============================================================================
-//  Buyer offer card
+//  Buyer offer row — dense single-row layout (CoinGecko-style table)
 // ============================================================================
 
-function BuyerOfferCard({
+function BuyerOfferRow({
   row,
+  index,
   connectedWallet,
   onMatch,
   onCancel,
 }: {
   row: OfferRow;
+  index: number;
   connectedWallet: PublicKey | null;
   onMatch: () => void;
   onCancel: () => Promise<string>;
@@ -554,10 +677,12 @@ function BuyerOfferCard({
   const buyerTypeLabel = BUYER_TYPE_LABELS[o.buyerType] ?? "Buyer";
   const isOwner =
     connectedWallet && connectedWallet.toBase58() === o.buyer.toBase58();
-  const expiresMonth = new Date(Number(o.expiresAt) * 1000).toLocaleDateString(
-    "en-ZA",
-    { month: "short", year: "numeric" },
-  );
+  const expiresShort = new Date(
+    Number(o.expiresAt) * 1000,
+  ).toLocaleDateString("en-ZA", { month: "short", year: "2-digit" });
+  const postedShort = new Date(
+    Number(o.createdAt) * 1000,
+  ).toLocaleDateString("en-ZA", { day: "numeric", month: "short" });
 
   const handleCancel = async () => {
     setBusy(true);
@@ -571,196 +696,193 @@ function BuyerOfferCard({
   };
 
   return (
-    <div className={styles.box}>
-      <div className={styles.boxBody}>
-        <div
+    <>
+      <div
+        title={`Posted ${postedShort}${
+          middleman > 0
+            ? ` · middleman ≈ R ${ZAR.format(middleman)}/ton (you keep R ${ZAR.format(savingsPerTon)}/ton more)`
+            : ""
+        }`}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "24px 1fr auto auto",
+          gap: 10,
+          alignItems: "center",
+          padding: "12px 12px",
+          borderTop: "1px solid rgba(255, 230, 210, 0.05)",
+        }}
+      >
+        {/* Index */}
+        <span
           style={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: 12,
-            marginBottom: 10,
+            fontSize: 11,
+            fontWeight: 700,
+            color: "rgba(255, 230, 210, 0.4)",
+            fontVariantNumeric: "tabular-nums",
           }}
         >
-          <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                marginBottom: 4,
-              }}
-            >
-              <Store size={14} style={{ color: "#ffb86b", flexShrink: 0 }} />
-              <span
-                style={{
-                  fontSize: 14,
-                  fontWeight: 800,
-                  color: "rgba(255, 245, 230, 0.95)",
-                }}
-              >
-                {o.buyerName || "Unnamed buyer"}
-              </span>
-              <span
-                style={{
-                  fontSize: 9,
-                  letterSpacing: "0.12em",
-                  textTransform: "uppercase",
-                  color: "rgba(255, 230, 210, 0.4)",
-                  fontWeight: 700,
-                }}
-              >
-                · {buyerTypeLabel}
-              </span>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: 12,
-                fontSize: 11,
-                color: "rgba(255, 230, 210, 0.55)",
-              }}
-            >
-              <span>{cropLabel}</span>
-              <span>{regionLabel}</span>
-              <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
-                <CalendarDays size={10} /> by {expiresMonth}
-              </span>
-            </div>
-          </div>
+          {index + 1}
+        </span>
 
-          {savingsPct !== null && savingsPct > 0 ? (
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-                padding: "4px 10px",
-                borderRadius: 999,
-                background: "rgba(46, 125, 50, 0.18)",
-                border: "1px solid rgba(46, 125, 50, 0.45)",
-                color: "#7adf7d",
-                fontSize: 11,
-                fontWeight: 800,
-                flexShrink: 0,
-              }}
-              title={`Direct buyer pays R ${ZAR.format(savingsPerTon)}/ton more than the typical local middleman`}
-            >
-              <TrendingUp size={11} />+{savingsPct}% {t("marketplace.vs_middleman")}
-            </div>
-          ) : null}
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 800,
-                color: "rgba(255, 245, 230, 0.95)",
-                fontVariantNumeric: "tabular-nums",
-                lineHeight: 1.1,
-              }}
-            >
-              R {ZAR.format(direct)}/ton
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: "rgba(255, 230, 210, 0.55)",
-                marginTop: 2,
-              }}
-            >
-              {t("marketplace.up_to")} <strong>{o.maxQuantityTons} {t("marketplace.tons")}</strong>
-              {middleman > 0 ? (
-                <>
-                  {" "}
-                  ·{" "}
-                  <span style={{ color: "rgba(255, 230, 210, 0.35)" }}>
-                    {t("marketplace.middleman_approx")} R {ZAR.format(middleman)}/ton
-                  </span>
-                </>
-              ) : null}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-            {isOwner ? (
-              <button
-                type="button"
-                onClick={handleCancel}
-                disabled={busy}
-                title="Cancel this offer (you posted it)"
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(192, 57, 43, 0.5)",
-                  background: "rgba(192, 57, 43, 0.10)",
-                  color: "#ff9b8e",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  fontFamily: "inherit",
-                  cursor: busy ? "wait" : "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                  opacity: busy ? 0.7 : 1,
-                }}
-              >
-                {busy ? <Loader2 size={11} /> : <Trash2 size={11} />} {t("marketplace.cancel")}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={onMatch}
-              disabled={!connectedWallet}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 999,
-                border: "1px solid rgba(255, 184, 107, 0.5)",
-                background: connectedWallet
-                  ? "rgba(255, 184, 107, 0.12)"
-                  : "rgba(255, 255, 255, 0.04)",
-                color: connectedWallet ? "#ffb86b" : "rgba(255, 230, 210, 0.45)",
-                fontSize: 11,
-                fontWeight: 700,
-                fontFamily: "inherit",
-                cursor: connectedWallet ? "pointer" : "not-allowed",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              {t("marketplace.match")} <ArrowRight size={12} />
-            </button>
-          </div>
-        </div>
-
-        {error ? (
+        {/* Buyer + meta (icon, name, type · crop · region) */}
+        <div style={{ minWidth: 0 }}>
           <div
             style={{
-              marginTop: 8,
-              padding: "6px 10px",
-              borderRadius: 8,
-              background: "rgba(255, 123, 107, 0.10)",
-              border: "1px solid rgba(255, 123, 107, 0.35)",
-              fontSize: 10,
-              color: "#ffb0a3",
+              display: "flex",
+              alignItems: "center",
+              gap: 7,
+              marginBottom: 2,
             }}
           >
-            {error}
+            <Store size={13} style={{ color: "#ffb86b", flexShrink: 0 }} />
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: "rgba(255, 245, 230, 0.95)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {o.buyerName || "Unnamed buyer"}
+            </span>
           </div>
-        ) : null}
+          <div
+            style={{
+              fontSize: 10,
+              color: "rgba(255, 230, 210, 0.45)",
+              letterSpacing: "0.02em",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {buyerTypeLabel} · {cropLabel} · {regionLabel}
+          </div>
+        </div>
+
+        {/* Price · tons · savings · expires */}
+        <div style={{ textAlign: "right" }}>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 800,
+              color: "rgba(255, 245, 230, 0.95)",
+              fontVariantNumeric: "tabular-nums",
+              lineHeight: 1.1,
+            }}
+          >
+            R {ZAR.format(direct)}
+            <span
+              style={{
+                fontSize: 9,
+                color: "rgba(255, 230, 210, 0.4)",
+                fontWeight: 600,
+                marginLeft: 2,
+              }}
+            >
+              /ton
+            </span>
+          </div>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              marginTop: 3,
+              fontSize: 10,
+              color: "rgba(255, 230, 210, 0.55)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            <span>{o.maxQuantityTons}t</span>
+            {savingsPct !== null && savingsPct > 0 ? (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 2,
+                  color: "#7adf7d",
+                  fontWeight: 800,
+                  padding: "1px 5px",
+                  borderRadius: 4,
+                  background: "rgba(46, 125, 50, 0.18)",
+                }}
+              >
+                <TrendingUp size={9} />+{savingsPct}%
+              </span>
+            ) : null}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+              <CalendarDays size={9} /> {expiresShort}
+            </span>
+          </div>
+        </div>
+
+        {/* Action */}
+        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+          {isOwner ? (
+            <button
+              type="button"
+              onClick={handleCancel}
+              disabled={busy}
+              title={t("marketplace.cancel")}
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 999,
+                border: "1px solid rgba(192, 57, 43, 0.5)",
+                background: "rgba(192, 57, 43, 0.10)",
+                color: "#ff9b8e",
+                fontFamily: "inherit",
+                cursor: busy ? "wait" : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: busy ? 0.7 : 1,
+              }}
+            >
+              {busy ? <Loader2 size={12} /> : <Trash2 size={12} />}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onMatch}
+            disabled={!connectedWallet}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 999,
+              border: "1px solid rgba(255, 184, 107, 0.5)",
+              background: connectedWallet
+                ? "rgba(255, 184, 107, 0.14)"
+                : "rgba(255, 255, 255, 0.04)",
+              color: connectedWallet ? "#ffb86b" : "rgba(255, 230, 210, 0.45)",
+              fontSize: 11,
+              fontWeight: 700,
+              fontFamily: "inherit",
+              cursor: connectedWallet ? "pointer" : "not-allowed",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            {t("marketplace.match")} <ArrowRight size={11} />
+          </button>
+        </div>
       </div>
-    </div>
+
+      {error ? (
+        <div
+          style={{
+            padding: "4px 12px 10px 46px",
+            fontSize: 10,
+            color: "#ffb0a3",
+          }}
+        >
+          {error}
+        </div>
+      ) : null}
+    </>
   );
 }
 
