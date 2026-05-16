@@ -1,4 +1,4 @@
-![Mazra'at albaan](design/banner-3x1.png)
+![Mazra'at albaan](design/logo-mark-512.png)
 
 # Mazra'at albaan
 
@@ -39,7 +39,7 @@ The two-tier auth is deliberate: farmers should never see a private key; the co-
 - [Architecture](docs/architecture.md) — on-chain / off-chain split, data flow
 - [Regulatory analysis](docs/regulatory.md) — NCA / FAIS / FSCA / SARB / POPIA red lines
 - [Insurer outreach pack](docs/outreach/) — one-pager + product-brief PDFs for licensed agri-insurers
-- [Mobile mockup](design/mockups/mobile.png) · [Web mockup](design/mockups/web.png) · [Brand mark](design/logo-mark.svg)
+- [Mobile mockup](design/mockups/mobile.png) · [Web mockup](design/mockups/web.png) · [Brand mark](design/logo-mark-512.png)
 - [`CLAUDE.md`](CLAUDE.md) — internal project briefing (auto-loaded by Claude in this repo)
 
 ## Project layout

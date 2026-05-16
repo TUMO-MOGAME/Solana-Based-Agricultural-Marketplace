@@ -58,8 +58,7 @@ Scaffolded 2026-05-07 — Next.js + Supabase auth + dashboard shell. Heavily ref
 | `src/lib/vuna/dashboard-tour.tsx` | `useDashboardTour()` hook + `<TourMenuItem />` + `<TourOverlay />`. 7-step narration, drives tab navigation as each step speaks, pulses the Wallet sidebar item during the wallet step. |
 | `src/lib/supabase/client.ts` | Browser Supabase client + `isSupabaseConfigured()` for demo-mode |
 | `scripts/setup-devnet-demo.mjs` | One-shot devnet setup — registers a farmer, creates + approves + disburses a Grow Pack, fires drought trigger |
-| `public/brand/{logo-mark,logo-horizontal}.svg` | Branded mark + horizontal lockup |
-| `public/brand/logo-mark-{256,512}.png` | Raster fallbacks |
+| `public/brand/logo-mark-{256,512}.png` | Brand mark — Imagen-generated botanical emblem, resized from `design/logo-source.png` by `design/build_logo.py` |
 
 ## Two surfaces, one codebase
 

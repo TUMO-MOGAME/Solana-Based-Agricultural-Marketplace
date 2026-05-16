@@ -53,10 +53,11 @@ A Solana-based agricultural marketplace for South African smallholder farmers, b
 │
 ├── design/                  ← UI design + mockups + brand
 │   ├── palette.md              (original cream/green/gold brand palette)
-│   ├── logo-mark.svg · logo-horizontal.svg
-│   ├── logo-mark-{64,256,512,1024}.png · banner-{3x1,4x1}.png
-│   ├── build_logo.py · build_banner.py · build_mockups.py
-│   └── mockups/{mobile,web}.png
+│   ├── logo-source.png         (picked Imagen variant — canonical source)
+│   ├── logo-mark-{64,256,512,1024}.png  (resized from source)
+│   ├── build_logo.py           (resizes logo-source.png → all sizes, fans out to app/)
+│   ├── build_mockups.py · mockups/{mobile,web}.png
+│   └── (scripts/generate_logo.py at repo root regenerates new source variants)
 │
 ├── programs/vuna/           ← Anchor program — DEPLOYED to devnet
 │   ├── Anchor.toml · Cargo.toml
@@ -72,7 +73,7 @@ A Solana-based agricultural marketplace for South African smallholder farmers, b
 │
 ├── app/                     ← Next.js frontend — DEPLOYED to Vercel
 │   ├── package.json · next.config.ts · vitest.config.ts · tsconfig.json
-│   ├── public/brand/{logo-mark.svg,logo-horizontal.svg,logo-mark-{256,512}.png}
+│   ├── public/brand/logo-mark-{256,512}.png
 │   ├── public/fonts/Satoshi-*.woff2
 │   ├── scripts/setup-devnet-demo.mjs       (one-shot demo data setup)
 │   ├── supabase/migrations/                (3 SQL files: notifications, profiles, posts)

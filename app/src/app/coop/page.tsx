@@ -437,7 +437,7 @@ export default function CoopPage() {
             Home
           </Link>
           <img
-            src="/brand/logo-mark.svg"
+            src="/brand/logo-mark-256.png"
             alt="Mazra'at albaan"
             width={36}
             height={36}

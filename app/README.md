@@ -1,4 +1,4 @@
-![Mazra'at albaan](public/brand/logo-horizontal.svg)
+![Mazra'at albaan](public/brand/logo-mark-512.png)
 
 # app/
 
@@ -130,4 +130,4 @@ The remaining encoder (`settle_repayment`) is still inlined in `scripts/setup-de
 
 - Farmer mobile: [`../design/mockups/mobile.png`](../design/mockups/mobile.png)
 - Co-op web: [`../design/mockups/web.png`](../design/mockups/web.png)
-- Brand mark: [`../design/logo-mark.svg`](../design/logo-mark.svg) · [`../design/logo-horizontal.svg`](../design/logo-horizontal.svg)
+- Brand mark: [`../design/logo-mark-512.png`](../design/logo-mark-512.png) · source [`../design/logo-source.png`](../design/logo-source.png)

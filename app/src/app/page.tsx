@@ -33,7 +33,7 @@ export default function WelcomePage() {
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <img
-              src="/brand/logo-mark.svg"
+              src="/brand/logo-mark-256.png"
               alt="Mazra'at albaan"
               width={32}
               height={32}

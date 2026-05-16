@@ -498,7 +498,7 @@ export default function DashboardPage() {
           aria-label="Mazra'at albaan — go to home"
         >
           <img
-            src="/brand/logo-mark.svg"
+            src="/brand/logo-mark-256.png"
             alt="Mazra'at albaan"
             width={34}
             height={34}
