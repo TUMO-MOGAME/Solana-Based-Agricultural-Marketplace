@@ -7,7 +7,7 @@
 
 ## 1. What this project is
 
-A Solana-based agricultural marketplace for South African smallholder farmers, built for the **Solana 2026 Frontier Hackathon — Physical World Applications track**.
+A Solana-based agricultural marketplace for South African smallholder farmers, built for the **Solana 2026 Frontier Hackathon — Physical World Applications track**. The hackathon has now concluded with the project placing **#1 in South Africa · #3 in Africa · #8 globally**. The project continues as the basis for a Pilot v1 push in H1 2027.
 
 **Names:**
 - **User-facing brand:** *Mazra'at albaan* (page titles, dashboard headings, marketing copy)
@@ -48,6 +48,7 @@ A Solana-based agricultural marketplace for South African smallholder farmers, b
 │   ├── architecture.md · regulatory.md · glossary.md
 │   ├── phase-4-fund-a-farmer.md   (peer-to-peer 0%-return roadmap, NOT implemented)
 │   ├── api-backend-scoping.md     (api/ Node.js backend scoping, NOT implemented)
+│   ├── payment-rails-scoping.md   (ZAR↔on-chain bridge: Stitch+VALR/YC partner plan, NOT implemented)
 │   ├── outreach/               (insurer outreach pack — one-pager + product-brief PDFs)
 │   └── presentation/           (Tumo's global pitch — script PDF + 10 slides, built by scripts/build_pitch.py)
 │
@@ -254,7 +255,7 @@ We hold these licences ourselves OR partner with someone who does. No shortcuts.
 
 | Phase | Window | Goal |
 |-|-|-|
-| Hackathon | 6 weeks | Working devnet demo. End-to-end flow. 5–10 simulated farmers. |
+| Hackathon | 6 weeks (**✅ shipped 2026-Q2 — SA #1 · Africa #3 · global #8**) | Working devnet demo. End-to-end flow. 5–10 simulated farmers. |
 | Pilot v1 | H1 2027 | 50–200 real farmers, one province, one crop. **60–80% repayment, not 95%.** |
 | Pilot v2 | H2 2027 | Second province, second crop. Reinsurance arrangement begins. |
 | Regional | 2028 | Zambia / Kenya via Superteam. Multi-currency settlement. |

@@ -12,6 +12,7 @@ Narrative + reference docs for Project Vuna.
 | `regulatory.md` | living doc | Detailed regulatory analysis. The non-negotiable list. |
 | `phase-4-fund-a-farmer.md` | roadmap | Peer-to-peer 0%-return Grow Pack funding. **Roadmap only — not yet implemented.** Locks in the strict 0% principle before code starts. |
 | `api-backend-scoping.md` | roadmap | `api/` Node.js backend scoping — architecture, endpoint priority, data model, POPIA constraints. **Not yet implemented**; build starts at Pilot v1 (2027 H1). |
+| `payment-rails-scoping.md` | roadmap | ZAR ↔ on-chain bridge scoping — partners (Stitch, VALR, Yellow Card), three-tier delivery (mocked UI / sandbox-real / production), regulatory constraints, indicative costs. **Not yet implemented**; phase 1 (mocked UI) is the next shippable change after sign-off, phases 2-3 gate on partner conversations + the `api/` backend existing. |
 | `glossary.md` | living doc | Project vocabulary. Add terms as we coin them. |
 | `presentation/Mazraat_albaan_speaking_script.pdf` | generated | Tumo's ~2 min speaker script for the global pitch. Solo-author framing. Regenerate via `python scripts/build_pitch.py`. |
 | `presentation/Mazraat_albaan_slides.pdf` | generated | 10-slide 16:9 deck that screen-shares alongside the script. Same build script. |

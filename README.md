@@ -7,7 +7,7 @@
 
 Mazra'at albaan gives small farmers seeds, fertilizer, and drought insurance on credit — bundled into one *Grow Pack* and repaid at harvest. When bad weather hits, the parametric policy pays out automatically. The farmer never sees a wallet, a stablecoin, or the word "blockchain".
 
-Built for the **Solana 2026 Frontier Hackathon — Physical World Applications track**.
+Built for the **Solana 2026 Frontier Hackathon — Physical World Applications track**. Final placement: **#1 in South Africa · #3 in Africa · #8 globally.**
 
 **Author:** Tumo Mogame
 
