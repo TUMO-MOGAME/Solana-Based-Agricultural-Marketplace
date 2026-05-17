@@ -60,6 +60,8 @@ import { readDemoDeals, type DemoDeal } from "@/lib/vuna/demo-deals";
 import { ApplyTab } from "./apply-tab";
 import { MarketplaceTab } from "./marketplace-tab";
 import { ListenButton } from "@/lib/vuna/listen-button";
+import { solToZar, useSolZarRate } from "@/lib/vuna/use-sol-zar-rate";
+import { RateFreshnessTag } from "@/lib/vuna/rate-freshness-tag";
 import {
   useDashboardTour,
   TourMenuItem,
@@ -1900,11 +1902,12 @@ function DealHistoryCard({
   const released = onChain === null;
   const isBuyer = cached.buyer === myWallet;
 
+  const rate = useSolZarRate();
   const lamports = onChain
     ? Number(onChain.amountLamports)
     : Number(BigInt(cached.amountLamports));
   const sol = lamports / 1_000_000_000;
-  const randApprox = Math.round(sol * 1000);
+  const randApprox = solToZar(sol, rate.rate);
 
   const statusLabel = released ? "Released" : "Active";
   const statusColor = released ? "#7adf7d" : "#ffb86b";
@@ -1987,13 +1990,19 @@ function DealHistoryCard({
         >
           <span
             style={{
+              display: "inline-flex",
+              alignItems: "baseline",
+              gap: 8,
               fontSize: 16,
               fontWeight: 800,
               color: "rgba(255, 245, 230, 0.95)",
               fontVariantNumeric: "tabular-nums",
             }}
           >
-            ≈ R {randApprox} ({sol.toFixed(3)} SOL)
+            {randApprox !== null
+              ? `≈ R ${ZAR_FMT.format(randApprox)} (${sol.toFixed(3)} SOL)`
+              : `— (${sol.toFixed(3)} SOL)`}
+            <RateFreshnessTag rate={rate} />
           </span>
           <span style={{ fontSize: 11, color: "rgba(255, 230, 210, 0.45)" }}>
             {created}

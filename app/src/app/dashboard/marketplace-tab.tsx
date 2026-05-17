@@ -65,6 +65,8 @@ import {
   type DemoDeal,
 } from "@/lib/vuna/demo-deals";
 import { useT } from "@/lib/i18n/provider";
+import { solToZar, useSolZarRate } from "@/lib/vuna/use-sol-zar-rate";
+import { RateFreshnessTag } from "@/lib/vuna/rate-freshness-tag";
 import styles from "./dashboard.module.css";
 
 const ZAR = new Intl.NumberFormat("en-ZA", { maximumFractionDigits: 0 });
@@ -1112,6 +1114,7 @@ function MatchOfferModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const rate = useSolZarRate();
   const o = row.offer;
   const cropLabel = CROP_LABELS[o.crop] ?? `crop#${o.crop}`;
   const youArePoster =
@@ -1246,13 +1249,25 @@ function MatchOfferModal({
       </Field>
       <div
         style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
           fontSize: 10,
-          color: "rgba(255, 230, 210, 0.4)",
+          color: "rgba(255, 230, 210, 0.55)",
           marginTop: -4,
           marginBottom: 8,
         }}
       >
-        ≈ R {Math.round(Number(solStr || "0") * 1000)} (using a 1 SOL = R 1,000 demo peg)
+        <span>
+          {(() => {
+            const zar = solToZar(Number(solStr || "0"), rate.rate);
+            return zar !== null
+              ? `≈ R ${ZAR.format(zar)} at the current SOL/ZAR rate`
+              : "≈ R — (live rate loading)";
+          })()}
+        </span>
+        <RateFreshnessTag rate={rate} />
       </div>
 
       {error ? <ModalError message={error} /> : null}
@@ -1740,6 +1755,7 @@ function ActiveDealCard({
   const isFarmer = cached.farmer === myWallet;
   const released = onChain === null;
 
+  const rate = useSolZarRate();
   const [confirmState, setConfirmState] = useState<ConfirmState>({ kind: "idle" });
 
   const lamports = onChain
@@ -1838,16 +1854,23 @@ function ActiveDealCard({
               fontVariantNumeric: "tabular-nums",
             }}
           >
-            ≈ R {Math.round(sol * 1000)} locked
+            {(() => {
+              const zar = solToZar(sol, rate.rate);
+              return zar !== null ? `≈ R ${ZAR.format(zar)} locked` : "R — locked";
+            })()}
           </span>
           <span
             style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
               fontSize: 11,
               color: "rgba(255, 230, 210, 0.45)",
               fontVariantNumeric: "tabular-nums",
             }}
           >
             ({sol.toFixed(3)} SOL)
+            <RateFreshnessTag rate={rate} />
           </span>
         </div>
 
